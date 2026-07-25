@@ -7,9 +7,12 @@ La API usa JSON para consultas y errores. El render exitoso es la excepcion: dev
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/pdf
-Content-Disposition: attachment; filename="nutricion-v3.pdf"
-X-Template-Code: nutricion
+Content-Disposition: attachment; filename="constancia_webinar-v3.pdf"
+X-Template-Code: constancia_webinar
 X-Template-Version: 3
+X-Template-Selected-Pages: 1,2,3,4
+X-Template-Rendered-Pages: 3
+X-Template-Ignored-Pages: 3
 ```
 
 Body:
@@ -37,7 +40,7 @@ Cuando faltan variables de texto requeridas, tambien se devuelve `missingVariabl
 {
   "ok": false,
   "message": "Faltan variables requeridas para renderizar la plantilla.",
-  "missingVariables": ["nombre_completo", "nro_documento"]
+  "missingVariables": ["nombre_participante", "nro_documento"]
 }
 ```
 
@@ -45,7 +48,7 @@ Cuando faltan variables de texto requeridas, tambien se devuelve `missingVariabl
 
 | Codigo | Significado | Cuando ocurre | Como solucionarlo |
 | --- | --- | --- | --- |
-| `400` | Request invalido. | JSON mal formado, falta `templateCode`, `input` no es objeto o faltan variables requeridas. | Validar el payload y consultar `/api/v1/templates/:code/inputs`. |
+| `400` | Request invalido. | JSON mal formado, falta `templateCode`, `input` no es objeto, faltan variables requeridas, `pages`/`ignorePages` contienen hojas invalidas o la seleccion queda vacia. | Validar el payload y consultar `/api/v1/templates/:code/inputs`. |
 | `401` | No autenticado. | Falta `x-api-key` o la clave es invalida, expirada o no cumple origen permitido. | Enviar la `rawKey` completa en el header correcto y revisar estado/expiracion. |
 | `403` | Acceso denegado por politica externa. | Proxy, firewall, WAF o regla de infraestructura bloquea la solicitud. | Revisar reglas del dominio, Cloudflare, CORS/proxy y origen del request. |
 | `404` | Recurso no encontrado. | `templateCode` inexistente, plantilla archivada o sin version actual disponible. | Usar `/api/v1/templates`, confirmar `code` y activar/versionar la plantilla. |
@@ -64,8 +67,10 @@ Forma minima esperada:
 
 ```json
 {
-  "templateCode": "nutricion",
-  "input": {}
+  "templateCode": "constancia_webinar",
+  "input": {},
+  "pages": [1, 2, 3, 4],
+  "ignorePages": [3]
 }
 ```
 
@@ -75,7 +80,7 @@ Forma minima esperada:
 {
   "ok": false,
   "message": "Faltan variables requeridas para renderizar la plantilla.",
-  "missingVariables": ["nombre_completo"]
+  "missingVariables": ["nombre_participante"]
 }
 ```
 
@@ -143,7 +148,7 @@ Puede significar:
 | `message` | Si | No aplica. |
 | `missingVariables` | Si | No aplica. |
 | Version (`x-template-version`) | Si | No aplica. |
-| Variables enviadas | Solo si no contienen datos sensibles. | DNI, emails, telefonos o datos personales si tu politica lo prohibe. |
+| Variables enviadas | Solo si no contienen datos sensibles. | Documentos, emails, telefonos o datos personales si tu politica lo prohibe. |
 | API key | Solo alias o prefijo seguro. | Nunca guardar la clave completa. |
 | Tiempo de respuesta | Si | No aplica. |
 

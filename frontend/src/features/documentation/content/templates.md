@@ -10,10 +10,10 @@ La plantilla decide la posición, fuente, formato y tipo de componente. El consu
 
 | La API envía | La plantilla determina |
 | --- | --- |
-| `"nombre_completo": "JUAN PÉREZ"` | Dónde aparece, fuente, tamaño y color. |
-| `"codigo_alumno": "STU-000123"` | Si se imprime como texto o se usa dentro de un enlace. |
-| `"qr_alumno": "https://portal.example.com/verify/STU-000123"` | Tamaño, posición y apariencia del QR. |
-| `"logo": "https://assets.example.com/logo.png"` | Tamaño y posición de la imagen. |
+| `"nombre_participante": "ANA TORRES"` | Dónde aparece, fuente, tamaño y color. |
+| `"codigo_constancia": "WEB-2026-001"` | Si se imprime como texto o se usa dentro de un enlace. |
+| `"qr_constancia": "https://eventos.miempresa.com/validar/WEB-2026-001"` | Tamaño, posición y apariencia del QR. |
+| `"logo": "https://assets.miempresa.com/logo-eventos.png"` | Tamaño y posición de la imagen. |
 
 No diseñes el documento desde el payload. El payload no debe contener HTML, estructuras inventadas ni instrucciones visuales.
 
@@ -23,9 +23,9 @@ Una plantilla combina tres niveles distintos. Mantenerlos separados evita errore
 
 | Nivel | Ejemplo | Función |
 | --- | --- | --- |
-| Contenedor | `d1_nombre_alumno` | Identifica un elemento dentro del editor. Debe ser único. |
-| Variable de texto | `{nombre_completo}` | Declara un valor reemplazable dentro de un texto. Puede repetirse en varias hojas. |
-| Objeto cambiable | `#qr_alumno#1` | Declara un elemento completo que puede recibir contenido desde la API. |
+| Contenedor | `d1_nombre_participante` | Identifica un elemento dentro del editor. Debe ser único. |
+| Variable de texto | `{nombre_participante}` | Declara un valor reemplazable dentro de un texto. Puede repetirse en varias hojas. |
+| Objeto cambiable | `#qr_constancia#1` | Declara un elemento completo que puede recibir contenido desde la API. |
 
 El nombre del contenedor organiza internamente a pdfme. Para una integración normal importan las variables entre llaves y los objetos cuyo nombre comienza con `#`.
 
@@ -35,16 +35,16 @@ Una expresión de plantilla puede mezclar partes fijas con variables:
 
 | Parte | Ejemplo | Quién la proporciona |
 | --- | --- | --- |
-| Contenido fijo | `https://portal.example.com/students/` | La plantilla. |
-| Variable | `{codigo_alumno}` | La API mediante `input.codigo_alumno`. |
-| Composición | `https://portal.example.com/students/{codigo_alumno}` | La plantilla durante el render. |
+| Contenido fijo | `https://eventos.miempresa.com/constancias/` | La plantilla. |
+| Variable | `{codigo_constancia}` | La API mediante `input.codigo_constancia`. |
+| Composición | `https://eventos.miempresa.com/constancias/{codigo_constancia}` | La plantilla durante el render. |
 
 Ejemplo completo:
 
 ```text
-Plantilla: [{codigo_alumno}](https://portal.example.com/students/{codigo_alumno})
-Input:     "codigo_alumno": "STU-000123"
-Resultado: texto STU-000123 con destino https://portal.example.com/students/STU-000123
+Plantilla: [{codigo_constancia}](https://eventos.miempresa.com/constancias/{codigo_constancia})
+Input:     "codigo_constancia": "WEB-2026-001"
+Resultado: texto WEB-2026-001 con destino https://eventos.miempresa.com/constancias/WEB-2026-001
 ```
 
 Revisa primero la expresión de la plantilla. Después envía únicamente el dato que esa expresión necesita.
@@ -58,15 +58,15 @@ Los campos `multiVariableText` permiten elegir el formato del contenido.
 | Simple | `plain` | Todo el texto comparte fuente, peso, color y estilo. |
 | Markdown | `inline-markdown` | Una misma caja necesita negrita, cursiva, tachado, código o enlaces. |
 
-El modo cambia cómo se interpreta el contenido de la caja. No cambia la sintaxis de las variables: `{nombre_completo}` funciona en ambos modos.
+El modo cambia cómo se interpreta el contenido de la caja. No cambia la sintaxis de las variables: `{nombre_participante}` funciona en ambos modos.
 
 ## Modo simple
 
 En modo simple, el contenido se imprime literalmente y conserva saltos de línea.
 
 ```text
-Se certifica que {nombre_completo}
-completó el curso {nombre_curso}.
+Se deja constancia que {nombre_participante}
+participó en el webinar {nombre_evento}.
 ```
 
 | Capacidad | Comportamiento |
@@ -91,19 +91,19 @@ Activa **Markdown** cuando necesites estilos dentro de una misma caja. PDF Serve
 | Negrita y cursiva | `***texto***` |
 | Tachado | `~~texto~~` |
 | Código | `` `texto` `` |
-| Enlace | `[texto](https://portal.example.com)` |
+| Enlace | `[texto](https://eventos.miempresa.com)` |
 
 Ejemplo:
 
 ```text
-En mérito por culminar el **{nombre_curso}** con una duración de **{horas} horas**.
+Por participar en el **{nombre_evento}** con una duración de **{horas} horas**.
 ```
 
 La API debe enviar valores normales:
 
 ```json
 {
-  "nombre_curso": "Diplomado Internacional en Nutrición",
+  "nombre_evento": "Webinar de gestión de eventos",
   "horas": "64"
 }
 ```
@@ -139,7 +139,7 @@ Se pueden escapar `\`, `*`, `~`, `` ` ``, `[`, `]`, `(` y `)`.
 Una variable usa un nombre entre llaves:
 
 ```text
-{nombre_completo}
+{nombre_participante}
 ```
 
 También puedes combinar varias dentro de la misma caja:
@@ -151,9 +151,9 @@ También puedes combinar varias dentro de la misma caja:
 | Regla | Ejemplo correcto |
 | --- | --- |
 | Usa letras, números y guion bajo. | `{fecha_emision}` |
-| Mantén una convención estable. | `{nombre_completo}` |
+| Mantén una convención estable. | `{nombre_participante}` |
 | Evita espacios y signos. | No usar `{nombre completo}`. |
-| Reutiliza la misma clave para el mismo dato. | `{nombre_completo}` en todas las hojas. |
+| Reutiliza la misma clave para el mismo dato. | `{nombre_participante}` en todas las hojas. |
 
 Si una variable aparece en cinco páginas, se declara igual en todas. El nombre del contenedor puede cambiar, pero la variable permanece igual.
 
@@ -162,15 +162,15 @@ Si una variable aparece en cinco páginas, se declara igual en todas. El nombre 
 Las variables pueden ocupar todo el fragmento o solo una parte:
 
 ```text
-**{nombre_completo}**
+**{nombre_participante}**
 ```
 
 ```text
-Curso: ***{nombre_curso}***
+Evento: ***{nombre_evento}***
 ```
 
 ```text
-Código: `{codigo_certificado}`
+Código: `{codigo_constancia}`
 ```
 
 Los valores recibidos para una variable se insertan como texto literal. Si el valor contiene `**`, `~`, `` ` `` o corchetes, esos caracteres no crean un estilo nuevo. La negrita, la cursiva y los enlaces deben definirse en el contenido de la plantilla.
@@ -180,7 +180,7 @@ Los valores recibidos para una variable se insertan como texto literal. Si el va
 En modo Markdown, usa la sintaxis estándar:
 
 ```text
-[Consultar certificado](https://portal.example.com)
+[Consultar constancia](https://eventos.miempresa.com)
 ```
 
 El PDF mostrará el texto y conservará el destino clicable. Para un color concreto, configura `fontColor` en la caja.
@@ -190,21 +190,21 @@ El PDF mostrará el texto y conservará el destino clicable. Para un color concr
 Puedes mostrar un código y usarlo también dentro de la URL:
 
 ```text
-[{codigo_alumno}](https://portal.example.com/students/{codigo_alumno})
+[{codigo_constancia}](https://eventos.miempresa.com/constancias/{codigo_constancia})
 ```
 
 Payload correcto:
 
 ```json
 {
-  "codigo_alumno": "STU-000123"
+  "codigo_constancia": "WEB-2026-001"
 }
 ```
 
-El PDF muestra `STU-000123` y abre:
+El PDF muestra `WEB-2026-001` y abre:
 
 ```text
-https://portal.example.com/students/STU-000123
+https://eventos.miempresa.com/constancias/WEB-2026-001
 ```
 
 Cuando toda la caja es un único enlace y conserva el color negro predeterminado, PDF Server aplica azul `#1677ff`. pdfme agrega el subrayado y la anotación clicable. Si el enlace está mezclado con más texto, define el color deseado en el editor o utiliza una caja independiente.
@@ -213,7 +213,7 @@ No envíes la URL completa si la plantilla ya contiene el dominio y la ruta:
 
 ```json
 {
-  "codigo_alumno": "https://portal.example.com/students/STU-000123"
+  "codigo_constancia": "https://eventos.miempresa.com/constancias/WEB-2026-001"
 }
 ```
 
@@ -224,10 +224,10 @@ Ese valor se trataría como el código y produciría texto o un destino incorrec
 También puedes usar una variable cuyo valor ya sea la URL completa:
 
 ```text
-[Abrir ficha]({url_ficha})
+[Abrir constancia]({url_constancia})
 ```
 
-La integración enviará, por ejemplo, `https://portal.example.com/students/STU-000123` en `url_ficha`.
+La integración enviará, por ejemplo, `https://eventos.miempresa.com/constancias/WEB-2026-001` en `url_constancia`.
 
 ## Objetos estáticos y cambiables
 
@@ -236,8 +236,8 @@ Una imagen, QR o fecha sin prefijo `#` conserva el contenido definido en la plan
 | Tipo | Nombre en el editor | Clave externa |
 | --- | --- | --- |
 | Imagen | `#logo` | `logo` |
-| QR | `#qr_alumno` | `qr_alumno` |
-| Código 128 | `#codigo_certificado` | `codigo_certificado` |
+| QR | `#qr_constancia` | `qr_constancia` |
+| Código 128 | `#codigo_constancia` | `codigo_constancia` |
 | Fecha | `#fecha_emision` | `fecha_emision` |
 | Fecha y hora | `#fecha_hora_emision` | `fecha_hora_emision` |
 | Hora | `#hora_emision` | `hora_emision` |
@@ -252,11 +252,11 @@ pdfme requiere nombres de contenedor únicos. Agrega un sufijo reconocido para r
 
 | Página | Nombre del contenedor | Clave resultante |
 | --- | --- | --- |
-| 1 | `#qr_alumno#1` | `qr_alumno` |
-| 2 | `#qr_alumno#2` | `qr_alumno` |
-| 3 | `#qr_alumno__p3` | `qr_alumno` |
-| 4 | `#qr_alumno__page4` | `qr_alumno` |
-| 5 | `#qr_alumno_page5` | `qr_alumno` |
+| 1 | `#qr_constancia#1` | `qr_constancia` |
+| 2 | `#qr_constancia#2` | `qr_constancia` |
+| 3 | `#qr_constancia__p3` | `qr_constancia` |
+| 4 | `#qr_constancia__page4` | `qr_constancia` |
+| 5 | `#qr_constancia_page5` | `qr_constancia` |
 
 Sufijos admitidos: `#<n>`, `__p<n>`, `__page<n>`, `_p<n>` y `_page<n>`, donde `<n>` es el número usado para diferenciar el contenedor.
 
@@ -275,19 +275,19 @@ Una URL remota exige que el backend pueda acceder al recurso durante el render. 
 El contenido del QR puede ser una URL, un identificador o cualquier texto válido:
 
 ```text
-https://portal.example.com/verify/CERT-2026-0001
+https://eventos.miempresa.com/validar/WEB-2026-001
 ```
 
-El nombre `#qr_alumno` declara que el contenido es reemplazable. No agregues `{}` alrededor del valor de un objeto QR.
+El nombre `#qr_constancia` declara que el contenido es reemplazable. No agregues `{}` alrededor del valor de un objeto QR.
 
 Un enlace de texto y un QR son componentes diferentes:
 
 | Clave | Tipo | Valor esperado |
 | --- | --- | --- |
-| `codigo_alumno` | Variable en Markdown | `STU-000123` |
-| `qr_alumno` | Objeto `qrcode` | `https://portal.example.com/verify/STU-000123` |
+| `codigo_constancia` | Variable en Markdown | `WEB-2026-001` |
+| `qr_constancia` | Objeto `qrcode` | `https://eventos.miempresa.com/validar/WEB-2026-001` |
 
-PDF Server no deriva automáticamente `qr_alumno` desde `codigo_alumno`. Si la plantilla utiliza ambos, la integración debe enviar ambas claves.
+PDF Server no deriva automáticamente `qr_constancia` desde `codigo_constancia`. Si la plantilla utiliza ambos, la integración debe enviar ambas claves.
 
 ## Fechas y horas
 
@@ -305,10 +305,10 @@ Si necesitas una fecha redactada como `22 de julio de 2026`, normalmente convien
 
 | Contenido | Ejemplo | Comportamiento |
 | --- | --- | --- |
-| Fijo | `Certificado de participación` | Nunca cambia por una integración normal. |
-| Variable | `{nombre_completo}` | Debe recibirse en `input`. |
+| Fijo | `Constancia de participación` | Nunca cambia por una integración normal. |
+| Variable | `{nombre_participante}` | Debe recibirse en `input`. |
 | Predeterminado | Valor guardado en `content` | Se usa en el editor y puede servir como muestra. |
-| Objeto cambiable | `#qr_alumno` | Se reemplaza si llega su clave externa. |
+| Objeto cambiable | `#qr_constancia` | Se reemplaza si llega su clave externa. |
 
 Las variables detectadas se consideran requeridas para render. Un valor predeterminado ayuda al diseño, pero no elimina esa validación en la API.
 

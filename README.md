@@ -260,6 +260,7 @@ Contenido cubierto:
 - URLs locales y producción para consumir la API.
 - Cómo obtener una API key desde la app con permiso `api_keys.manage`.
 - Uso de `templateCode` como contrato externo.
+- `pages` e `ignorePages` para devolver solo ciertas hojas u omitir hojas concretas por numero al renderizar.
 - Formato del payload `input`.
 - Variables de texto y objetos cambiables con prefijo `#`.
 - Endpoint `/api/v1/templates/:code/inputs` para inspeccionar el contrato actual de una plantilla.
@@ -270,7 +271,7 @@ Contenido cubierto:
 
 ## Estado del render externo
 
-El endpoint `POST /api/v1/render` valida la API key, toma la version actual de la plantilla y responde un PDF (`application/pdf`). Si el payload es invalido o faltan variables requeridas devuelve `400`; si el `templateCode` no existe devuelve `404`.
+El endpoint `POST /api/v1/render` valida la API key, toma la version actual de la plantilla y responde un PDF (`application/pdf`). El payload puede incluir `pages` para devolver solo ciertas hojas e `ignorePages` para omitir paginas concretas por numero. Si no se envia ninguno, renderiza todo. Si el payload es invalido, faltan variables requeridas, se solicitan hojas invalidas o la combinacion queda sin hojas devuelve `400`; si el `templateCode` no existe devuelve `404`.
 
 ---
 

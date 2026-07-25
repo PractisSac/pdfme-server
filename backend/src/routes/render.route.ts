@@ -9,6 +9,8 @@ export const renderRouter = Router();
 const renderRequestSchema = z.object({
   templateCode: z.string().min(1),
   input: z.record(z.unknown()).default({}),
+  pages: z.array(z.number().int().positive()).default([]),
+  ignorePages: z.array(z.number().int().positive()).default([]),
 });
 
 renderRouter.post('/v1/render', async (request, response) => {
@@ -33,6 +35,8 @@ renderRouter.post('/v1/render', async (request, response) => {
     const result = await renderTemplatePdf({
       templateCode: parsed.data.templateCode,
       values: parsed.data.input,
+      pages: parsed.data.pages,
+      ignoredPages: parsed.data.ignorePages,
     });
 
     if (!result.ok) {
@@ -40,6 +44,8 @@ renderRouter.post('/v1/render', async (request, response) => {
         ok: false,
         message: result.message,
         missingVariables: 'missingVariables' in result ? result.missingVariables : undefined,
+        invalidPages: 'invalidPages' in result ? result.invalidPages : undefined,
+        invalidIgnoredPages: 'invalidIgnoredPages' in result ? result.invalidIgnoredPages : undefined,
       });
       return;
     }
@@ -52,6 +58,9 @@ renderRouter.post('/v1/render', async (request, response) => {
       .setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
       .setHeader('X-Template-Code', result.template.code)
       .setHeader('X-Template-Version', String(result.template.versionNumber))
+      .setHeader('X-Template-Selected-Pages', result.template.selectedPages.join(','))
+      .setHeader('X-Template-Rendered-Pages', String(result.template.renderedPageCount))
+      .setHeader('X-Template-Ignored-Pages', result.template.ignoredPages.join(','))
       .send(Buffer.from(result.pdf));
   } catch (error) {
     response.status(500).json({

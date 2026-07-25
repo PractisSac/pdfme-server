@@ -9,12 +9,12 @@ Esta página describe cómo un sistema externo consulta plantillas, descubre su 
 `input` no es una descripción visual del documento. Cada propiedad debe contener únicamente el valor que espera el componente asociado.
 
 ```text
-API:       "codigo_alumno": "STU-000123"
-Plantilla: [{codigo_alumno}](https://portal.example.com/students/{codigo_alumno})
-Resultado: texto STU-000123 con un enlace clicable
+API:       "codigo_constancia": "WEB-2026-001"
+Plantilla: [{codigo_constancia}](https://eventos.miempresa.com/constancias/{codigo_constancia})
+Resultado: texto WEB-2026-001 con un enlace clicable
 ```
 
-No envíes una URL completa, Markdown o un objeto especial en `codigo_alumno` si la plantilla ya construye el enlace. Para saber qué enviar, revisa la plantilla y consulta `/api/v1/templates/:code/inputs`.
+No envíes una URL completa, Markdown o un objeto especial en `codigo_constancia` si la plantilla ya construye el enlace. Para saber qué enviar, revisa la plantilla y consulta `/api/v1/templates/:code/inputs`.
 
 ## Base URL
 
@@ -73,15 +73,15 @@ Respuesta `200`:
   "data": [
     {
       "id": "cmrpcj5y2000lhzhjmk1w81dp",
-      "name": "Certificado Nutrición",
-      "code": "nutricion",
+      "name": "Constancia Webinar Evento",
+      "code": "constancia_webinar",
       "status": "ACTIVE",
       "versionNumber": 3,
       "pageFormat": "A4",
       "pageOrientation": "LANDSCAPE",
       "pageWidthMm": 297,
       "pageHeightMm": 210,
-      "tags": ["certificados"]
+      "tags": ["constancias", "webinar"]
     }
   ]
 }
@@ -103,8 +103,8 @@ Respuesta `200`:
 ```json
 {
   "id": "cmrpcj5y2000lhzhjmk1w81dp",
-  "name": "Certificado Nutrición",
-  "code": "nutricion"
+  "name": "Constancia Webinar Evento",
+  "code": "constancia_webinar"
 }
 ```
 
@@ -112,7 +112,7 @@ Request correcto:
 
 ```json
 {
-  "templateCode": "nutricion",
+  "templateCode": "constancia_webinar",
   "input": {}
 }
 ```
@@ -125,7 +125,7 @@ x-api-key: API_KEY
 ```
 
 ```bash
-curl -sS "https://pdf.example.com/api/v1/templates/nutricion/inputs" \
+curl -sS "https://pdf.example.com/api/v1/templates/constancia_webinar/inputs" \
   -H "x-api-key: $PDFME_API_KEY"
 ```
 
@@ -134,24 +134,24 @@ Respuesta:
 ```json
 {
   "template": {
-    "code": "nutricion",
-    "name": "Certificado Nutrición",
+    "code": "constancia_webinar",
+    "name": "Constancia Webinar Evento",
     "versionNumber": 3,
     "pageCount": 5
   },
   "inputs": {
     "variables": [
       {
-        "key": "nombre_completo",
-        "schemaNames": ["d1_nombre_alumno", "c1_nombre_alumno"],
+        "key": "nombre_participante",
+        "schemaNames": ["d1_nombre_participante", "c1_nombre_participante"],
         "pages": [1, 2, 3, 4, 5]
       }
     ],
     "objects": [
       {
-        "key": "qr_alumno",
+        "key": "qr_constancia",
         "type": "qrcode",
-        "schemaNames": ["#qr_alumno#1", "#qr_alumno#2"],
+        "schemaNames": ["#qr_constancia#1", "#qr_constancia#2"],
         "pages": [1, 2]
       }
     ]
@@ -166,21 +166,24 @@ Respuesta:
 
 Para construir `input`, usa únicamente cada `key`. `schemaNames` ayuda a ubicar elementos dentro del editor, pero no es necesario para una integración normal.
 
+Usa `pages` para saber en qué números de hoja aparece cada variable u objeto.
+
 ## Tipos de entrada
 
 La clave debe coincidir exactamente con la variable u objeto detectado. El valor requerido depende del componente de la plantilla.
 
 | Clave | Tipo en la plantilla | Valor que envía la API | Ejemplo |
 | --- | --- | --- | --- |
-| `nombre_completo` | Texto simple o variable Markdown | Texto sin instrucciones visuales. | `"JUAN PÉREZ"` |
+| `nombre_participante` | Texto simple o variable Markdown | Texto sin instrucciones visuales. | `"ANA TORRES"` |
 | `nro_documento` | Texto | Texto o número convertido a texto. | `"12345678"` |
 | `fecha_emision_texto` | Texto | Fecha ya redactada. | `"22 de julio de 2026"` |
 | `horas` | Texto | Número convertido a texto. | `"16"` |
-| `codigo_alumno` | Variable dentro de enlace Markdown | Solo el código requerido por la expresión. | `"STU-000123"` |
-| `url_ficha` | Variable usada como destino completo | URL completa. | `"https://portal.example.com/students/STU-000123"` |
-| `qr_alumno` | Objeto `qrcode` | Contenido final que debe codificar el QR. | `"https://portal.example.com/verify/STU-000123"` |
+| `nombre_evento` | Texto simple o variable Markdown | Nombre del evento o webinar. | `"Webinar de gestión de eventos"` |
+| `codigo_constancia` | Variable dentro de enlace Markdown | Solo el código requerido por la expresión. | `"WEB-2026-001"` |
+| `url_constancia` | Variable usada como destino completo | URL completa. | `"https://eventos.miempresa.com/constancias/WEB-2026-001"` |
+| `qr_constancia` | Objeto `qrcode` | Contenido final que debe codificar el QR. | `"https://eventos.miempresa.com/validar/WEB-2026-001"` |
 | `logo` | Objeto `image` | Data URI o URL HTTPS accesible por el backend. | `"data:image/png;base64,..."` |
-| `codigo_certificado` | Objeto `code128` | Texto que debe codificar la barra. | `"CERT-2026-0001"` |
+| `codigo_constancia` | Objeto `code128` | Texto que debe codificar la barra. | `"WEB-2026-001"` |
 | `fecha_emision` | Objeto `date` | Fecha en el formato acordado. | `"2026-07-22"` |
 
 ### Mismo dato, contratos diferentes
@@ -189,27 +192,27 @@ Este payload es válido cuando la plantilla muestra un código enlazado y tambi�
 
 ```json
 {
-  "codigo_alumno": "STU-000123",
-  "qr_alumno": "https://portal.example.com/verify/STU-000123"
+  "codigo_constancia": "WEB-2026-001",
+  "qr_constancia": "https://eventos.miempresa.com/validar/WEB-2026-001"
 }
 ```
 
-`codigo_alumno` completa una variable dentro de una expresión Markdown. `qr_alumno` alimenta un componente QR y por eso recibe el contenido final que será codificado. PDF Server no construye uno a partir del otro.
+`codigo_constancia` completa una variable dentro de una expresión Markdown. `qr_constancia` alimenta un componente QR y por eso recibe el contenido final que será codificado. PDF Server no construye uno a partir del otro.
 
 ## Texto simple por API
 
 Plantilla:
 
 ```text
-Otorgado a {nombre_completo}, identificado con {tipo_documento}: {nro_documento}
+Se deja constancia que {nombre_participante}, identificado con {tipo_documento}: {nro_documento}
 ```
 
 Input:
 
 ```json
 {
-  "nombre_completo": "Juan Pérez Ramos",
-  "tipo_documento": "DNI",
+  "nombre_participante": "Ana Torres Ramos",
+  "tipo_documento": "Documento",
   "nro_documento": "12345678"
 }
 ```
@@ -221,14 +224,14 @@ Una misma variable se envía una sola vez. PDF Server aplica el valor a todas la
 Plantilla en modo `inline-markdown`:
 
 ```text
-Completó el **{nombre_curso}** con ***{horas} horas académicas***.
+Participó en el **{nombre_evento}** con ***{horas} horas***.
 ```
 
 Input:
 
 ```json
 {
-  "nombre_curso": "Diplomado Internacional en Nutrición",
+  "nombre_evento": "Webinar de gestión de eventos",
   "horas": "64"
 }
 ```
@@ -252,14 +255,14 @@ Los asteriscos enviados como parte del valor se imprimen; no convierten ese frag
 Plantilla:
 
 ```text
-[{codigo_alumno}](https://portal.example.com/students/{codigo_alumno})
+[{codigo_constancia}](https://eventos.miempresa.com/constancias/{codigo_constancia})
 ```
 
 Input:
 
 ```json
 {
-  "codigo_alumno": "STU-000123"
+  "codigo_constancia": "WEB-2026-001"
 }
 ```
 
@@ -267,17 +270,17 @@ Resultado:
 
 | Texto visible | Destino clicable |
 | --- | --- |
-| `STU-000123` | `https://portal.example.com/students/STU-000123` |
+| `WEB-2026-001` | `https://eventos.miempresa.com/constancias/WEB-2026-001` |
 
 Cuando una variable está incrustada dentro de una URL mayor, PDF Server codifica el segmento para evitar caracteres inválidos. Si la URL completa llega en una sola variable, usa `[Abrir]({url_ficha})`.
 
 ### Errores frecuentes con enlaces
 
-Si la plantilla ya contiene `https://portal.example.com/students/`, esto es incorrecto:
+Si la plantilla ya contiene `https://eventos.miempresa.com/constancias/`, esto es incorrecto:
 
 ```json
 {
-  "codigo_alumno": "https://portal.example.com/students/STU-000123"
+  "codigo_constancia": "https://eventos.miempresa.com/constancias/WEB-2026-001"
 }
 ```
 
@@ -287,7 +290,7 @@ También es incorrecto enviar una estructura inventada:
 
 ```json
 {
-  "codigo_alumno": "[[\"STU-000123\",\"https://portal.example.com/students/STU-000123\"]]"
+  "codigo_constancia": "[[\"WEB-2026-001\",\"https://eventos.miempresa.com/constancias/WEB-2026-001\"]]"
 }
 ```
 
@@ -298,20 +301,20 @@ Los valores de variables se tratan como texto literal. La API no interpreta arre
 Plantilla:
 
 ```text
-Página 1: #qr_alumno#1
-Página 2: #qr_alumno#2
-Página 3: #qr_alumno__p3
+Página 1: #qr_constancia#1
+Página 2: #qr_constancia#2
+Página 3: #qr_constancia__p3
 ```
 
 Input único:
 
 ```json
 {
-  "qr_alumno": "https://portal.example.com/verify/CERT-2026-0001"
+  "qr_constancia": "https://eventos.miempresa.com/validar/WEB-2026-001"
 }
 ```
 
-El mismo contenido se aplica a todos los objetos cuyo nombre se normaliza a `qr_alumno`.
+El mismo contenido se aplica a todos los objetos cuyo nombre se normaliza a `qr_constancia`.
 
 ## Imagen dinámica
 
@@ -377,19 +380,33 @@ Request completo:
 
 ```json
 {
-  "templateCode": "nutricion",
+  "templateCode": "constancia_webinar",
   "input": {
-    "nombre_completo": "Juan Pérez Ramos",
-    "tipo_documento": "DNI",
+    "nombre_participante": "Ana Torres Ramos",
+    "tipo_documento": "Documento",
     "nro_documento": "12345678",
-    "nombre_curso": "Diplomado Internacional en Nutrición",
+    "nombre_evento": "Webinar de gestión de eventos",
     "horas": "64",
-    "codigo_alumno": "STU-000123",
-    "qr_alumno": "https://portal.example.com/verify/STU-000123",
+    "codigo_constancia": "WEB-2026-001",
+    "qr_constancia": "https://eventos.miempresa.com/validar/WEB-2026-001",
     "fecha_emision_texto": "22 de julio de 2026"
-  }
+  },
+  "pages": [1, 2, 3, 4],
+  "ignorePages": [3]
 }
 ```
+
+`pages` e `ignorePages` son opcionales y aceptan números de hoja. Si no envías ninguno, se renderizan todas las hojas.
+
+| Campo | Comportamiento |
+| --- | --- |
+| `pages` | Limita el PDF a esas hojas. Ejemplo: `[1, 2, 4]` devuelve solo esas hojas. |
+| `ignorePages` | Excluye hojas del resultado. Ejemplo: `[3, 5]` omite esas hojas. |
+| Ambos juntos | Primero se aplica `pages` y luego `ignorePages`. Ejemplo: `pages: [1, 2, 3]` con `ignorePages: [2]` devuelve hojas `1` y `3`. |
+
+Si envías una hoja inexistente, o la combinación deja el PDF sin hojas, la API responde `400`.
+
+Las variables requeridas se validan después de aplicar esta selección. Si una variable existe solo en una hoja que no se va a devolver, no será requerida para ese render.
 
 Respuesta exitosa:
 
@@ -405,9 +422,12 @@ Headers útiles:
 
 ```http
 Content-Type: application/pdf
-Content-Disposition: attachment; filename="nutricion-v3.pdf"
-X-Template-Code: nutricion
+Content-Disposition: attachment; filename="constancia_webinar-v3.pdf"
+X-Template-Code: constancia_webinar
 X-Template-Version: 3
+X-Template-Selected-Pages: 1,2,3,4
+X-Template-Rendered-Pages: 3
+X-Template-Ignored-Pages: 3
 ```
 
 ## curl y Postman
@@ -418,16 +438,17 @@ curl -X POST "https://pdf.example.com/api/v1/render" \
   -H "Content-Type: application/json" \
   -H "Accept: application/pdf" \
   -d '{
-    "templateCode": "nutricion",
+    "templateCode": "constancia_webinar",
     "input": {
-      "nombre_completo": "Juan Perez Ramos",
-      "tipo_documento": "DNI",
+      "nombre_participante": "Ana Torres Ramos",
+      "tipo_documento": "Documento",
       "nro_documento": "12345678",
-      "codigo_alumno": "STU-000123",
-      "qr_alumno": "https://portal.example.com/verify/STU-000123"
+      "nombre_evento": "Webinar de gestión de eventos",
+      "codigo_constancia": "WEB-2026-001",
+      "qr_constancia": "https://eventos.miempresa.com/validar/WEB-2026-001"
     }
   }' \
-  --output certificado.pdf
+  --output constancia-webinar.pdf
 ```
 
 En Postman selecciona **Send and Download**. La respuesta no debe visualizarse como JSON o texto.
@@ -451,13 +472,14 @@ const response = await fetch('https://pdf.example.com/api/v1/render', {
     'Accept': 'application/pdf',
   },
   body: JSON.stringify({
-    templateCode: 'nutricion',
+    templateCode: 'constancia_webinar',
     input: {
-      nombre_completo: 'Juan Perez Ramos',
-      tipo_documento: 'DNI',
+      nombre_participante: 'Ana Torres Ramos',
+      tipo_documento: 'Documento',
       nro_documento: '12345678',
-      codigo_alumno: 'STU-000123',
-      qr_alumno: 'https://portal.example.com/verify/STU-000123',
+      nombre_evento: 'Webinar de gestión de eventos',
+      codigo_constancia: 'WEB-2026-001',
+      qr_constancia: 'https://eventos.miempresa.com/validar/WEB-2026-001',
     },
   }),
 });
@@ -468,75 +490,73 @@ if (!response.ok) {
 }
 
 const pdf = Buffer.from(await response.arrayBuffer());
-fs.writeFileSync('certificado.pdf', pdf);
+fs.writeFileSync('constancia-webinar.pdf', pdf);
 ```
 
-## Node-RED
+## Integración HTTP desde otra aplicación
 
-Flujo:
+Cualquier aplicación backend o herramienta de automatización puede consumir `/render` con el mismo flujo:
 
 ```text
-Inject o Webhook
-  -> Function: construir headers y payload
-  -> HTTP Request: recibir buffer
-  -> Archivo, correo o Google Drive
+Evento, formulario o proceso interno
+  -> construir headers y payload
+  -> POST /api/v1/render
+  -> recibir buffer PDF
+  -> guardar, enviar o registrar el documento
 ```
 
-Function node:
+Ejemplo de función reutilizable:
 
 ```js
-const apiKey = env.get('PDFME_API_KEY');
-const apiBaseUrl = env.get('PDFME_API_URL') || 'https://pdf.example.com/api';
+export async function renderConstanciaWebinar(source) {
+  const response = await fetch(`${process.env.PDFME_API_URL}/v1/render`, {
+    method: 'POST',
+    headers: {
+      'x-api-key': process.env.PDFME_API_KEY,
+      'Content-Type': 'application/json',
+      'Accept': 'application/pdf',
+    },
+    body: JSON.stringify({
+      templateCode: 'constancia_webinar',
+      input: {
+        nombre_participante: source.nombre_participante,
+        tipo_documento: source.tipo_documento,
+        nro_documento: source.nro_documento,
+        nombre_evento: source.nombre_evento,
+        codigo_constancia: source.codigo_constancia,
+        qr_constancia: source.qr_constancia,
+      },
+    }),
+  });
 
-if (!apiKey) {
-  node.error('PDFME_API_KEY no está configurada', msg);
-  return null;
-}
-
-const source = msg.payload || {};
-
-msg.method = 'POST';
-msg.url = `${apiBaseUrl}/v1/render`;
-msg.headers = {
-  'x-api-key': apiKey,
-  'Content-Type': 'application/json',
-  'Accept': 'application/pdf'
-};
-
-msg.payload = {
-  templateCode: 'nutricion',
-  input: {
-    nombre_completo: source.nombre_completo,
-    tipo_documento: source.tipo_documento,
-    nro_documento: source.nro_documento,
-    codigo_alumno: source.codigo_alumno,
-    qr_alumno: source.qr_alumno
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message ?? `PDF Server respondió ${response.status}`);
   }
-};
 
-return msg;
+  return Buffer.from(await response.arrayBuffer());
+}
 ```
 
-Configura el nodo **HTTP Request** así:
+El request debe cumplir:
 
 | Opción | Valor |
 | --- | --- |
-| Método | Usar `msg.method` (`POST`). |
-| URL | Usar `msg.url`. |
-| Payload | JSON desde `msg.payload`. |
-| Return | Binary buffer. |
+| Método | `POST`. |
+| URL | `/api/v1/render`. |
+| Payload | JSON con `templateCode`, `input`, `pages` opcional e `ignorePages` opcional. |
+| Respuesta esperada | Buffer binario del PDF. |
 
-Después del nodo HTTP, una respuesta correcta cumple:
+Una respuesta correcta cumple:
 
 ```js
-msg.statusCode === 200;
-Buffer.isBuffer(msg.payload) === true;
-msg.headers['content-type'].includes('application/pdf');
+response.status === 200;
+response.headers.get('content-type').includes('application/pdf');
 ```
 
-No ejecutes `JSON.parse(msg.payload)` cuando el estado sea `200`: `msg.payload` es el archivo PDF binario. Solo los errores se procesan como JSON.
+No ejecutes `JSON.parse(...)` cuando el estado sea `200`: la respuesta es el archivo PDF binario. Solo los errores se procesan como JSON.
 
-Nunca incluyas una API key real como valor alternativo dentro del Function node. Las exportaciones de Node-RED, capturas y repositorios pueden exponerla. Si una clave fue publicada, revócala y genera otra.
+Nunca incluyas una API key real directamente en el código, capturas o repositorios. Si una clave fue publicada, revócala y genera otra.
 
 ## Responsabilidad después del render
 
@@ -556,7 +576,7 @@ Estas acciones pertenecen al sistema consumidor:
 | Enviar por correo | Integración. |
 | Guardar una URL o ID externo | Integración. |
 
-PDF Server no devuelve propiedades propias de un flujo como `msg.body_quest.webpdf.current_doc`. Si tu aplicación necesita esa estructura, debe crearla después de recibir y almacenar el PDF.
+PDF Server no devuelve estructuras internas de tu aplicación. Si tu sistema necesita guardar una URL, un ID externo o un estado de proceso, debe crearlo después de recibir y almacenar el PDF.
 
 ## Google Drive
 
@@ -573,7 +593,7 @@ const pdfBuffer = Buffer.from(await response.arrayBuffer());
 
 await drive.files.create({
   requestBody: {
-    name: 'certificado.pdf',
+    name: 'constancia-webinar.pdf',
     mimeType: 'application/pdf',
   },
   media: {

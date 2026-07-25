@@ -26,9 +26,9 @@ Ejemplo de nombres recomendados:
 
 | Sistema consumidor | Nombre sugerido |
 | --- | --- |
-| Portal académico en desarrollo | `portal-academico-dev` |
-| Portal académico en producción | `portal-academico-prod` |
-| Worker de certificados | `certificados-worker-prod` |
+| Portal de eventos en desarrollo | `eventos-dev` |
+| Portal de eventos en producción | `eventos-prod` |
+| Worker de constancias | `constancias-worker-prod` |
 
 ## Almacenamiento seguro
 

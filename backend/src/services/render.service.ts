@@ -45,6 +45,8 @@ const plugins = {
 
 const DYNAMIC_OBJECT_SCHEMA_TYPES = new Set(['image', 'qrcode', 'code128', 'date', 'dateTime', 'time']);
 
+type RenderPage = Prisma.TemplatePageGetPayload<Record<string, never>>;
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -162,6 +164,58 @@ export function collectTemplateInputs(schemaPages: JsonRecord[][]) {
   return {
     variables: Array.from(variableMap.values()).sort((a, b) => a.key.localeCompare(b.key)),
     objects: Array.from(objectMap.values()).sort((a, b) => a.key.localeCompare(b.key) || a.type.localeCompare(b.type)),
+  };
+}
+
+function resolveRenderPages(pages: RenderPage[], selectedPages: number[] = [], ignoredPages: number[] = []) {
+  const selected = new Set<number>();
+  const ignored = new Set<number>();
+  const invalidPages: number[] = [];
+  const invalidIgnoredPages: number[] = [];
+  const byNumber = new Map(pages.map((page) => [page.pageNumber, page]));
+
+  for (const pageNumber of selectedPages) {
+    const page = byNumber.get(pageNumber);
+
+    if (!page) {
+      invalidPages.push(pageNumber);
+      continue;
+    }
+
+    selected.add(page.pageNumber);
+  }
+
+  for (const pageNumber of ignoredPages) {
+    const page = byNumber.get(pageNumber);
+
+    if (!page) {
+      invalidIgnoredPages.push(pageNumber);
+      continue;
+    }
+
+    ignored.add(page.pageNumber);
+  }
+
+  if (invalidPages.length > 0 || invalidIgnoredPages.length > 0) {
+    return { ok: false as const, invalidPages, invalidIgnoredPages };
+  }
+
+  const basePages = selectedPages.length > 0 ? pages.filter((page) => selected.has(page.pageNumber)) : pages;
+  const renderPages = basePages.filter((page) => !ignored.has(page.pageNumber));
+
+  if (renderPages.length === 0) {
+    return {
+      ok: false as const,
+      invalidPages: selectedPages,
+      invalidIgnoredPages: ignoredPages,
+    };
+  }
+
+  return {
+    ok: true as const,
+    selectedPages: basePages.map((page) => page.pageNumber),
+    ignoredPages: basePages.filter((page) => ignored.has(page.pageNumber)).map((page) => page.pageNumber),
+    renderPages,
   };
 }
 
@@ -317,6 +371,8 @@ export async function inspectTemplateInputs(templateCode: string) {
 export async function renderTemplatePdf(input: {
   templateCode: string;
   values: JsonRecord;
+  pages?: number[];
+  ignoredPages?: number[];
 }) {
   const template = await prisma.template.findFirst({
     where: { code: input.templateCode, status: { not: 'ARCHIVED' } },
@@ -335,7 +391,19 @@ export async function renderTemplatePdf(input: {
     return { ok: false as const, status: 404, message: 'No se encontro la plantilla solicitada.' };
   }
 
-  const designerJson = composeDesignerJson(currentVersion.pages);
+  const pageSelection = resolveRenderPages(currentVersion.pages, input.pages, input.ignoredPages);
+
+  if (!pageSelection.ok) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: 'Hojas solicitadas invalidas para la plantilla solicitada.',
+      invalidPages: pageSelection.invalidPages,
+      invalidIgnoredPages: pageSelection.invalidIgnoredPages,
+    };
+  }
+
+  const designerJson = composeDesignerJson(pageSelection.renderPages);
   const schemaPages = normalizeSchemaPages(getSchemaPages(designerJson));
   const requiredVariables = collectRequiredVariables(schemaPages);
   const missingVariables = requiredVariables.filter((variable) => {
@@ -380,6 +448,9 @@ export async function renderTemplatePdf(input: {
       name: template.name,
       versionNumber: currentVersion.versionNumber,
       pageCount: currentVersion.pages.length,
+      selectedPages: pageSelection.selectedPages,
+      renderedPageCount: pageSelection.renderPages.length,
+      ignoredPages: pageSelection.ignoredPages,
     },
   };
 }

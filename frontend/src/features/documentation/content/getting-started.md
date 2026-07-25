@@ -26,11 +26,11 @@ El objeto `input` no indica si un valor debe aparecer como texto, enlace, QR o i
 
 | Concepto | Ejemplo | Significado |
 | --- | --- | --- |
-| Plantilla | `Certificado de curso` | Diseño visual y reglas de presentación. |
-| `templateCode` | `certificado_curso` | Código público que identifica la plantilla. |
-| Variable | `{nombre_completo}` | Espacio de texto que recibe un valor. |
+| Plantilla | `Constancia de webinar` | Diseño visual y reglas de presentación. |
+| `templateCode` | `constancia_webinar` | Código público que identifica la plantilla. |
+| Variable | `{nombre_participante}` | Espacio de texto que recibe un valor. |
 | Componente | Texto, QR, imagen o fecha | Define cómo se interpreta y dibuja un valor. |
-| `input` | `{ "nombre_completo": "Juan Pérez" }` | Valores enviados por la integración. |
+| `input` | `{ "nombre_participante": "Ana Torres" }` | Valores enviados por la integración. |
 
 El nombre interno de un contenedor pdfme no es lo mismo que una variable. Los contenedores deben ser únicos; una variable puede repetirse en diferentes cajas y páginas.
 
@@ -43,7 +43,7 @@ Este ejemplo muestra un código como texto clicable.
 La plantilla fija el texto, el formato Markdown y la parte estable de la URL:
 
 ```text
-[{codigo_alumno}](https://portal.example.com/students/{codigo_alumno})
+[{codigo_constancia}](https://eventos.miempresa.com/constancias/{codigo_constancia})
 ```
 
 ### 2. Valor enviado por la API
@@ -52,18 +52,18 @@ La integración envía únicamente el dato requerido por la expresión:
 
 ```json
 {
-  "codigo_alumno": "STU-000123"
+  "codigo_constancia": "WEB-2026-001"
 }
 ```
 
 ### 3. Resultado generado
 
 ```text
-Texto visible: STU-000123
-Destino: https://portal.example.com/students/STU-000123
+Texto visible: WEB-2026-001
+Destino: https://eventos.miempresa.com/constancias/WEB-2026-001
 ```
 
-No envíes la URL completa dentro de `codigo_alumno`, porque la plantilla ya la construye. Tampoco envíes Markdown, HTML, arreglos serializados ni instrucciones visuales.
+No envíes la URL completa dentro de `codigo_constancia`, porque la plantilla ya la construye. Tampoco envíes Markdown, HTML, arreglos serializados ni instrucciones visuales.
 
 ## El tipo de componente define el valor
 
@@ -71,20 +71,20 @@ Dos entradas pueden partir del mismo dato de negocio y aun así requerir valores
 
 | Clave | Componente en la plantilla | Valor que espera |
 | --- | --- | --- |
-| `codigo_alumno` | Variable dentro de un enlace Markdown | Solo el código: `STU-000123`. |
-| `qr_alumno` | Componente QR llamado `#qr_alumno` | Contenido final del QR: `https://portal.example.com/verify/STU-000123`. |
+| `codigo_constancia` | Variable dentro de un enlace Markdown | Solo el código: `WEB-2026-001`. |
+| `qr_constancia` | Componente QR llamado `#qr_constancia` | Contenido final del QR: `https://eventos.miempresa.com/validar/WEB-2026-001`. |
 
-PDF Server no convierte automáticamente `codigo_alumno` en la URL de `qr_alumno`. Si la plantilla declara ambas claves, el consumidor debe enviar ambas con el formato que corresponde a cada componente.
+PDF Server no convierte automáticamente `codigo_constancia` en la URL de `qr_constancia`. Si la plantilla declara ambas claves, el consumidor debe enviar ambas con el formato que corresponde a cada componente.
 
 ## Entradas habituales
 
 | Clave de ejemplo | Tipo en la plantilla | Valor enviado por la API |
 | --- | --- | --- |
-| `nombre_completo` | Texto simple o variable Markdown | `"JUAN PÉREZ"` |
+| `nombre_participante` | Texto simple o variable Markdown | `"ANA TORRES"` |
 | `fecha_emision_texto` | Texto | `"22 de julio de 2026"` |
 | `horas` | Texto | `"16"` |
-| `codigo_alumno` | Texto dentro de enlace Markdown | `"STU-000123"` |
-| `qr_alumno` | QR | `"https://portal.example.com/verify/STU-000123"` |
+| `codigo_constancia` | Texto dentro de enlace Markdown | `"WEB-2026-001"` |
+| `qr_constancia` | QR | `"https://eventos.miempresa.com/validar/WEB-2026-001"` |
 | `logo` | Imagen | Data URI o URL HTTPS accesible por el backend. |
 | `fecha_emision` | Componente de fecha | `"2026-07-22"` |
 
@@ -92,27 +92,29 @@ Consulta siempre las entradas de la plantilla. El nombre de una clave por sí so
 
 ## Ejemplo completo
 
-Supongamos que la plantilla `ejemplo_integracion` contiene:
+Supongamos que la plantilla `constancia_webinar` contiene:
 
 | Elemento | Configuración en la plantilla |
 | --- | --- |
-| Nombre | `{nombre_completo}` en texto simple. |
+| Nombre | `{nombre_participante}` en texto simple. |
 | Fecha | `{fecha_emision_texto}` en texto simple. |
-| Enlace | `[{codigo_verificacion}](https://portal.example.com/verify/{codigo_verificacion})` en Markdown. |
-| QR | Componente `qrcode` llamado `#qr_verificacion`. |
+| Evento | `{nombre_evento}` en texto simple o Markdown. |
+| Enlace | `[{codigo_constancia}](https://eventos.miempresa.com/constancias/{codigo_constancia})` en Markdown. |
+| QR | Componente `qrcode` llamado `#qr_constancia`. |
 | Logo | Componente `image` llamado `#logo`. |
 
 El sistema consumidor envía:
 
 ```json
 {
-  "templateCode": "ejemplo_integracion",
+  "templateCode": "constancia_webinar",
   "input": {
-    "nombre_completo": "JUAN PÉREZ",
+    "nombre_participante": "ANA TORRES",
+    "nombre_evento": "Webinar de gestión de eventos",
     "fecha_emision_texto": "22 de julio de 2026",
-    "codigo_verificacion": "ABC123",
-    "qr_verificacion": "https://portal.example.com/verify/ABC123",
-    "logo": "https://assets.example.com/logo.png"
+    "codigo_constancia": "WEB-2026-001",
+    "qr_constancia": "https://eventos.miempresa.com/validar/WEB-2026-001",
+    "logo": "https://assets.miempresa.com/logo-eventos.png"
   }
 }
 ```
@@ -121,10 +123,11 @@ Resultado esperado:
 
 | Entrada | Uso final |
 | --- | --- |
-| `nombre_completo` | Se imprime como texto. |
+| `nombre_participante` | Se imprime como texto. |
+| `nombre_evento` | Se imprime como nombre del webinar o evento. |
 | `fecha_emision_texto` | Se imprime exactamente como fue enviada. |
-| `codigo_verificacion` | Se muestra como `ABC123` y forma el destino del enlace. |
-| `qr_verificacion` | Se codifica dentro del QR. |
+| `codigo_constancia` | Se muestra como `WEB-2026-001` y forma el destino del enlace. |
+| `qr_constancia` | Se codifica dentro del QR. |
 | `logo` | Se carga y dibuja como imagen. |
 
 ## Piezas de la integración
@@ -190,7 +193,7 @@ El consumidor decide qué ocurre después:
 - Registro en una base de datos externa.
 - Reintentos hacia servicios externos.
 
-Una propiedad como `msg.body_quest.webpdf.current_doc` pertenece a un flujo particular de Node-RED; no forma parte de la respuesta de PDF Server.
+PDF Server no devuelve estructuras internas de tu aplicación. Si necesitas una URL, un ID externo o un estado de proceso, tu sistema debe crearlo después de recibir y almacenar el PDF.
 
 ## Reglas que evitan errores
 
