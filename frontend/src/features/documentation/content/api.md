@@ -38,13 +38,54 @@ x-api-key: YOUR_API_KEY
 
 La API key se crea en **Claves API** por un usuario con permiso `api_keys.manage`. Guarda la `rawKey` en el backend consumidor o en un gestor de secretos; no la expongas en el navegador.
 
-## Endpoints disponibles
+## Endpoints externos disponibles
 
 | Método | Ruta | Resultado |
 | --- | --- | --- |
 | `GET` | `/api/v1/templates` | Catálogo de plantillas disponibles. |
 | `GET` | `/api/v1/templates/:code/inputs` | Variables y objetos detectados en la versión actual. |
 | `POST` | `/api/v1/render` | PDF binario generado con `templateCode` e `input`. |
+
+Estos endpoints usan `x-api-key` y están pensados para aplicaciones externas que solo necesitan consultar contratos y generar PDFs.
+
+## Endpoints internos del panel
+
+Los endpoints internos usan cookie de sesión HTTP-only creada por `/api/auth/login`. No aceptan `x-api-key`; se consumen desde la app administrativa y aplican permisos por rol.
+
+| Área | Método | Ruta | Permiso | Uso |
+| --- | --- | --- | --- | --- |
+| Sesión | `POST` | `/api/auth/login` | Público | Inicia sesión y crea cookie. |
+| Sesión | `POST` | `/api/auth/logout` | Sesión | Cierra sesión. |
+| Sesión | `GET` | `/api/auth/me` | Sesión | Devuelve el usuario autenticado. |
+| Plantillas | `GET` | `/api/templates` | `templates.view` | Lista plantillas internas con filtros `search` y `tag`. |
+| Plantillas | `GET` | `/api/templates/by-code/:code` | `templates.view` | Carga una plantilla completa para editar o previsualizar. |
+| Plantillas | `POST` | `/api/templates` | `templates.create` | Crea una plantilla inicial. |
+| Plantillas | `POST` | `/api/templates/:id/duplicate` | `templates.create` | Clona plantilla, versión actual, hojas, diseño y etiquetas. |
+| Plantillas | `PATCH` | `/api/templates/:id` | `templates.edit` | Actualiza nombre, código y etiquetas. |
+| Plantillas | `PATCH` | `/api/templates/:id/page-settings` | `templates.edit` | Guarda formato, orientación, tamaño y `designerJson`. |
+| Plantillas | `PATCH` | `/api/templates/:id/schema-locks` | `templates.edit` | Persiste bloqueos de elementos en base de datos. |
+| Versiones | `POST` | `/api/templates/:id/versions` | `templates.edit` | Crea una nueva versión desde el diseño actual. |
+| Versiones | `PATCH` | `/api/templates/:id/versions/:versionId/current` | `templates.edit` | Marca una versión como actual. |
+| Versiones | `DELETE` | `/api/templates/:id/versions/:versionId` | `templates.edit` | Borra una versión y renumera las restantes. |
+| Plantillas | `DELETE` | `/api/templates/:id` | `templates.delete` | Elimina una plantilla completa. |
+| Etiquetas | `GET` | `/api/tags` | `templates.edit` | Lista etiquetas disponibles. |
+| Etiquetas | `POST` | `/api/tags` | `templates.edit` | Crea una etiqueta. |
+| Etiquetas | `PATCH` | `/api/tags/:id` | `templates.edit` | Renombra una etiqueta. |
+| Etiquetas | `DELETE` | `/api/tags/:id` | `templates.edit` | Elimina una etiqueta. |
+| API keys | `GET` | `/api/api-credentials` | `api_keys.manage` | Lista claves API. |
+| API keys | `POST` | `/api/api-credentials` | `api_keys.manage` | Crea clave y devuelve `rawKey` una sola vez. |
+| API keys | `PATCH` | `/api/api-credentials/:id/disable` | `api_keys.manage` | Deshabilita una clave activa. |
+| API keys | `PATCH` | `/api/api-credentials/:id/activate` | `api_keys.manage` | Reactiva una clave no expirada. |
+| API keys | `PATCH` | `/api/api-credentials/:id/revoke` | `api_keys.manage` | Revoca/deshabilita una clave. |
+| API keys | `DELETE` | `/api/api-credentials/:id` | `api_keys.manage` | Elimina una clave. |
+| Usuarios | `GET` | `/api/users` | `users.manage` | Lista usuarios y roles. |
+| Usuarios | `POST` | `/api/users` | `users.manage` | Crea usuario. |
+| Usuarios | `PATCH` | `/api/users/:id` | `users.manage` | Actualiza usuario, rol, estado o contraseña. |
+| Usuarios | `DELETE` | `/api/users/:id` | `users.manage` | Elimina usuario con verificación de contraseña. |
+| Permisos | `GET` | `/api/permissions` | `users.manage` | Devuelve matriz de permisos. |
+| Permisos | `PATCH` | `/api/roles/:id/permissions` | `users.manage` | Actualiza permisos de un rol. |
+| Auditoría | `GET` | `/api/audit-logs` | `audit.view` | Lista eventos de auditoría. |
+| Salud | `GET` | `/api/health` | Público | Healthcheck del backend. |
 
 ## Flujo recomendado
 
@@ -53,6 +94,155 @@ La API key se crea en **Claves API** por un usuario con permiso `api_keys.manage
 3. Construye `input` con variables y objetos cambiables.
 4. Ejecuta `/render` y procesa la respuesta como PDF binario.
 5. Registra los headers de versión si necesitas auditoría.
+
+## Filtros internos de plantillas
+
+El panel usa `/api/templates` para listar plantillas administrables. A diferencia de `/api/v1/templates`, esta ruta usa sesión de usuario y puede recibir filtros.
+
+```http
+GET /api/templates?search=webinar&tag=constancias
+Cookie: pdfme_session=...
+```
+
+| Query | Comportamiento |
+| --- | --- |
+| `search` | Busca por `name` o `code`, sin distinguir mayúsculas/minúsculas. |
+| `tag` | Filtra plantillas que tengan una etiqueta con ese nombre exacto. |
+
+Respuesta:
+
+```json
+{
+  "data": [
+    {
+      "id": "cmrpcj5y2000lhzhjmk1w81dp",
+      "name": "Constancia Webinar Evento",
+      "code": "constancia_webinar",
+      "versionNumber": 3,
+      "pageCount": 5,
+      "tags": ["constancias", "webinar"]
+    }
+  ]
+}
+```
+
+El buscador y el filtro por etiqueta del panel consumen esta ruta; no filtran únicamente en memoria local.
+
+## Propiedades internas de plantilla
+
+El panel actualiza nombre, código y etiquetas con `PATCH /api/templates/:id`.
+
+```json
+{
+  "name": "Constancia Webinar Evento",
+  "code": "constancia_webinar",
+  "tagNames": ["constancias", "webinar"]
+}
+```
+
+Reglas:
+
+| Campo | Regla |
+| --- | --- |
+| `name` | Mínimo 2 caracteres. |
+| `code` | Mínimo 3 caracteres, solo `a-z`, números y `_`. |
+| `tagNames` | Arreglo de nombres de etiquetas. Si una etiqueta no existe, el servicio la crea/asocia durante la actualización de detalles. |
+
+El botón **Propiedades** de la lista de plantillas abre este mismo flujo para editar datos y etiquetas sin entrar primero al editor.
+
+## Guardado interno del editor
+
+El editor guarda el diseño completo con `PATCH /api/templates/:id/page-settings`.
+
+```json
+{
+  "pageFormat": "A4",
+  "pageOrientation": "LANDSCAPE",
+  "pageWidthMm": 297,
+  "pageHeightMm": 210,
+  "designerJson": {
+    "schemas": [
+      [
+        {
+          "name": "d1_nombre_participante",
+          "type": "multiVariableText",
+          "content": "{nombre_participante}",
+          "__isLocked": true
+        }
+      ]
+    ],
+    "basePdf": {
+      "width": 297,
+      "height": 210,
+      "padding": [0, 0, 0, 0]
+    }
+  }
+}
+```
+
+Este endpoint guarda cambios pendientes de diseño: mover elementos, agregar o eliminar hojas, reordenar hojas, formato, orientación y contenido visual.
+
+## Bloqueos de elementos
+
+El bloqueo de elementos se persiste de forma específica con `PATCH /api/templates/:id/schema-locks`.
+
+```json
+{
+  "lockedSchemaNames": [
+    "0::fondo_constancia",
+    "1::firma_director",
+    "2::qr_constancia"
+  ]
+}
+```
+
+Formato de cada lock key:
+
+| Parte | Ejemplo | Significado |
+| --- | --- | --- |
+| Índice de hoja | `0` | Hoja interna base cero. La hoja visible 1 es índice 0. |
+| Separador | `::` | Separador fijo. |
+| Nombre de schema | `qr_constancia` | `schema.name` del elemento dentro de pdfme. |
+
+Comportamiento:
+
+- El backend actualiza `__isLocked` dentro del `designerJson` de la versión actual.
+- El bloqueo queda guardado en base de datos, no solo en estado local del navegador.
+- Un elemento bloqueado no debe entrar en selección múltiple por arrastre en el editor.
+- El bloqueo no cambia el contrato externo: variables y objetos siguen renderizando por API.
+
+## Versiones internas
+
+Las versiones viven dentro de una plantilla y una sola versión queda marcada como actual.
+
+| Acción | Endpoint | Resultado |
+| --- | --- | --- |
+| Crear versión | `POST /api/templates/:id/versions` | Crea una copia versionada del diseño actual. |
+| Cambiar actual | `PATCH /api/templates/:id/versions/:versionId/current` | Marca esa versión como usada por editor y render. |
+| Borrar versión | `DELETE /api/templates/:id/versions/:versionId` | Borra una versión si no es la única. |
+
+Reglas al borrar:
+
+- No se puede borrar la única versión de una plantilla.
+- Si se borra la versión actual, la versión restante más reciente pasa a ser actual.
+- Después de borrar, las versiones se renumeran consecutivamente desde `1`.
+- Ejemplo: si existen `v1`, `v2`, `v3` y se elimina `v1`, las restantes pasan a `v1`, `v2`.
+- Ejemplo: si existen `v1`, `v2`, `v3` y se elimina `v2`, las restantes pasan a `v1`, `v2`.
+
+## Acciones internas de páginas
+
+Las acciones visuales de página del editor modifican el `designerJson` en memoria y quedan pendientes hasta presionar **Guardar**, excepto los bloqueos que se persisten por su endpoint específico.
+
+| Acción UI | Persistencia |
+| --- | --- |
+| Insertar página arriba | Pendiente hasta `Guardar`. |
+| Insertar página abajo | Pendiente hasta `Guardar`. |
+| Eliminar página actual | Pendiente hasta `Guardar`; no se muestra si solo queda una hoja. |
+| Mover hoja activa arriba | Pendiente hasta `Guardar`; no se muestra en la primera hoja ni con una sola hoja. |
+| Mover hoja activa abajo | Pendiente hasta `Guardar`; no se muestra en la última hoja ni con una sola hoja. |
+| Bloquear/desbloquear elemento | Se guarda inmediatamente en base de datos con `/schema-locks`. |
+
+El orden final de las hojas que consume `/render` es el orden guardado en `designerJson` y persistido mediante `/page-settings`.
 
 ## Listar plantillas
 

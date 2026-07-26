@@ -210,20 +210,38 @@ GET  /api/auth/me
 Administración interna:
 
 ```http
-GET    /api/templates
+GET    /api/templates?search=&tag=
+GET    /api/templates/by-code/:code
 POST   /api/templates
+POST   /api/templates/:id/duplicate
+PATCH  /api/templates/:id
 PATCH  /api/templates/:id/page-settings
+PATCH  /api/templates/:id/schema-locks
+POST   /api/templates/:id/versions
+PATCH  /api/templates/:id/versions/:versionId/current
+DELETE /api/templates/:id/versions/:versionId
 DELETE /api/templates/:id
 
 GET    /api/tags
 POST   /api/tags
+PATCH  /api/tags/:id
+DELETE /api/tags/:id
 
 GET    /api/api-credentials
 POST   /api/api-credentials
+PATCH  /api/api-credentials/:id/disable
+PATCH  /api/api-credentials/:id/activate
 PATCH  /api/api-credentials/:id/revoke
+DELETE /api/api-credentials/:id
 
 GET    /api/users
+POST   /api/users
+PATCH  /api/users/:id
+DELETE /api/users/:id
+
 GET    /api/permissions
+PATCH  /api/roles/:id/permissions
+
 GET    /api/audit-logs
 ```
 
@@ -245,7 +263,7 @@ GET /api/health
 
 ## Documentación para integradores
 
-La documentación integrada está protegida por sesión y enfocada en consumo externo de API:
+La documentación integrada es pública y cubre consumo externo de API y referencia interna del panel sin exponer datos sensibles:
 
 ```txt
 /documentation/getting-started
@@ -264,6 +282,9 @@ Contenido cubierto:
 - Formato del payload `input`.
 - Variables de texto y objetos cambiables con prefijo `#`.
 - Endpoint `/api/v1/templates/:code/inputs` para inspeccionar el contrato actual de una plantilla.
+- API interna del panel: plantillas, filtros `search`/`tag`, propiedades, tags, versionado, locks, usuarios, permisos, auditoria y claves API.
+- Guardado de bloqueos en base de datos mediante `/api/templates/:id/schema-locks`.
+- Borrado de versiones con renumeracion consecutiva de versiones restantes.
 - Ejemplos `curl` y TypeScript.
 - Respuestas, códigos HTTP, logging seguro y reintentos.
 

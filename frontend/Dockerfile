@@ -5,6 +5,7 @@ FROM node:18.20.8-bookworm-slim AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY scripts ./scripts
 RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund --loglevel=error
 
 ARG VITE_APP_NAME="PDF Server"

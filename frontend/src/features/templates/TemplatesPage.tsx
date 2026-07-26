@@ -1,4 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type { AbstractNode, IconDefinition as AntIconDefinition } from '@ant-design/icons-svg/es/types';
+import ArrowDownIcon from '@ant-design/icons-svg/es/asn/ArrowDownOutlined';
+import ArrowUpIcon from '@ant-design/icons-svg/es/asn/ArrowUpOutlined';
+import DeleteIcon from '@ant-design/icons-svg/es/asn/DeleteOutlined';
+import EllipsisIcon from '@ant-design/icons-svg/es/asn/EllipsisOutlined';
+import LockIcon from '@ant-design/icons-svg/es/asn/LockOutlined';
+import UnlockIcon from '@ant-design/icons-svg/es/asn/UnlockOutlined';
+import VerticalAlignBottomIcon from '@ant-design/icons-svg/es/asn/VerticalAlignBottomOutlined';
+import VerticalAlignTopIcon from '@ant-design/icons-svg/es/asn/VerticalAlignTopOutlined';
 import {
   ArrowLeftOutlined,
   CodeOutlined,
@@ -70,6 +79,28 @@ const pageFormats = [
   { value: 'LEGAL', label: 'Legal', width: 216, height: 356 },
   { value: 'CUSTOM', label: 'Personalizado', width: 210, height: 297 },
 ];
+
+function renderIconNode(node: AbstractNode): string {
+  const attrs = Object.entries(node.attrs ?? {})
+    .map(([key, value]) => `${key}="${String(value).replace(/"/g, '&quot;')}"`)
+    .join(' ');
+  const children = (node.children ?? []).map(renderIconNode).join('');
+  return `<${node.tag}${attrs ? ` ${attrs}` : ''}>${children}</${node.tag}>`;
+}
+
+function renderLibraryIcon(icon: AntIconDefinition, size: number): string {
+  const iconNode = typeof icon.icon === 'function' ? icon.icon('currentColor', 'currentColor') : icon.icon;
+  return renderIconNode({
+    ...iconNode,
+    attrs: {
+      ...iconNode.attrs,
+      'aria-hidden': 'true',
+      fill: 'currentColor',
+      height: String(size),
+      width: String(size),
+    },
+  });
+}
 
 type BlankBasePdf = {
   width: number;
@@ -386,6 +417,7 @@ export function TemplatesPage() {
   const [saving, setSaving] = useState(false);
   const [savingVersion, setSavingVersion] = useState(false);
   const [switchingVersion, setSwitchingVersion] = useState(false);
+  const [deletingVersionId, setDeletingVersionId] = useState('');
   const [duplicatingId, setDuplicatingId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -400,20 +432,27 @@ export function TemplatesPage() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [inputsDialogOpen, setInputsDialogOpen] = useState(false);
   const [inputsSnapshot, setInputsSnapshot] = useState<TemplateInputsSnapshot>({ objects: [], variables: [] });
+  const [detailsTemplate, setDetailsTemplate] = useState<TemplateItem | null>(null);
+  const [detailsMode, setDetailsMode] = useState<'details' | 'tags'>('details');
   const [detailsName, setDetailsName] = useState('');
   const [detailsCode, setDetailsCode] = useState('');
   const [detailsTags, setDetailsTags] = useState<string[]>([]);
+  const [tagFilter, setTagFilter] = useState('');
   const [savingDetails, setSavingDetails] = useState(false);
   const designerRef = useRef<PdfmeDesignerHandle | null>(null);
   const getSchemaLockKey = (pageIndex: number, schemaName: string) => `${pageIndex}::${schemaName.trim()}`;
   const getSchemaPositionKey = (pageIndex: number, schemaIndex: number) => `${pageIndex}::${schemaIndex}`;
   const previousSchemaLockKeyByPositionRef = useRef<Record<string, string>>({});
-  const isSchemaLocked = (pageIndex: number, schemaName: string, schemaIndex?: number) => {
+  const lockedSchemaNamesRef = useRef<string[]>([]);
+  const isSchemaLockedByKeys = (lockKeys: string[], pageIndex: number, schemaName: string, schemaIndex?: number) => {
     const lockKey = getSchemaLockKey(pageIndex, schemaName);
-    if (lockedSchemaNames.includes(lockKey)) return true;
+    if (lockKeys.includes(lockKey)) return true;
     if (typeof schemaIndex !== 'number') return false;
     const previousLockKey = previousSchemaLockKeyByPositionRef.current[getSchemaPositionKey(pageIndex, schemaIndex)];
-    return previousLockKey ? lockedSchemaNames.includes(previousLockKey) : false;
+    return previousLockKey ? lockKeys.includes(previousLockKey) : false;
+  };
+  const isSchemaLocked = (pageIndex: number, schemaName: string, schemaIndex?: number) => {
+    return isSchemaLockedByKeys(lockedSchemaNames, pageIndex, schemaName, schemaIndex);
   };
   const editorBusy = saving || savingVersion || savingDetails || switchingVersion;
   const editorBusyLabel = switchingVersion
@@ -427,8 +466,14 @@ export function TemplatesPage() {
   async function load() {
     if (templates.length === 0) setLoading(true);
     try {
+      const params = new URLSearchParams();
+      const searchQuery = search.trim();
+      if (searchQuery) params.set('search', searchQuery);
+      if (tagFilter) params.set('tag', tagFilter);
+      const queryString = params.toString();
+      const templatePath = `/api/templates${queryString ? `?${queryString}` : ''}`;
       const [payload, tagsPayload] = await Promise.all([
-        apiRequest<{ data: TemplateItem[] }>('/api/templates'),
+        apiRequest<{ data: TemplateItem[] }>(templatePath),
         apiRequest<{ data: TagItem[] }>('/api/tags').catch(() => ({ data: [] })),
       ]);
       setTemplates(payload.data);
@@ -440,8 +485,11 @@ export function TemplatesPage() {
 
   useEffect(() => {
     if (routeCode) return;
-    void load().catch((err) => notifyError(err, 'No se pudo cargar.'));
-  }, [routeCode]);
+    const timeoutId = window.setTimeout(() => {
+      void load().catch((err) => notifyError(err, 'No se pudo cargar.'));
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [routeCode, search, tagFilter]);
 
   useEffect(() => {
     if (!routeCode) {
@@ -475,13 +523,8 @@ export function TemplatesPage() {
   }, [routeCode]);
 
   const filteredTemplates = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return templates;
-    return templates.filter((template) => (
-      template.name.toLowerCase().includes(query) ||
-      template.code.toLowerCase().includes(query)
-    ));
-  }, [search, templates]);
+    return templates;
+  }, [templates]);
 
 
   const editingTemplateVersions = editingTemplate?.versions ?? [];
@@ -493,6 +536,10 @@ export function TemplatesPage() {
       isPreviewRoute ? 'preview' : 'edit',
     ].join(':')
     : 'empty';
+
+  useEffect(() => {
+    lockedSchemaNamesRef.current = lockedSchemaNames;
+  }, [lockedSchemaNames]);
 
 
   function resetCreateForm() {
@@ -607,29 +654,55 @@ export function TemplatesPage() {
     return () => setHeaderAction(null);
   }, [availableTags, clearOperationLabel, closeHeaderAction, code, codeSuffix, codeTouched, creating, editingTemplate, name, navigate, selectedTags, setHeaderAction, setOperationLabel, user]);
 
-  async function saveSettings() {
-    if (!editingTemplate) return null;
+  function getLiveDesignerTemplate() {
     const designerCurrentTemplate = designerRef.current?.getTemplate();
-    let currentDesignerTemplate = designerTemplate && designerCurrentTemplate
+    const currentDesignerTemplate = designerTemplate && designerCurrentTemplate
       ? { ...designerCurrentTemplate, basePdf: designerTemplate.basePdf }
       : designerCurrentTemplate ?? designerTemplate;
-    currentDesignerTemplate = currentDesignerTemplate ? normalizePdfmeTemplateFonts(currentDesignerTemplate) : currentDesignerTemplate;
+    return currentDesignerTemplate ? normalizePdfmeTemplateFonts(currentDesignerTemplate) : currentDesignerTemplate;
+  }
+
+  function applyLocksToTemplate(template: PdfmeTemplate, lockKeys: string[]) {
+    return {
+      ...template,
+      schemas: template.schemas.map((pageSchemas, pageIndex) => {
+        if (!Array.isArray(pageSchemas)) return pageSchemas;
+        return pageSchemas.map((schema, schemaIndex) => {
+          const schemaName = schema.name?.trim() || '';
+          const isLocked = schemaName ? isSchemaLockedByKeys(lockKeys, pageIndex, schemaName, schemaIndex) : false;
+          return {
+            ...schema,
+            __isLocked: isLocked,
+          };
+        });
+      }) as any,
+    } as PdfmeTemplate;
+  }
+
+  function refreshLockStateFromTemplate(template: PdfmeTemplate) {
+    const nextLockedSchemaNames: string[] = [];
+    const nextSchemaLockKeyByPosition: Record<string, string> = {};
+    template.schemas.forEach((pageSchemas, pageIndex) => {
+      if (!Array.isArray(pageSchemas)) return;
+      pageSchemas.forEach((schema, schemaIndex) => {
+        if (!schema?.name) return;
+        const lockKey = getSchemaLockKey(pageIndex, schema.name);
+        nextSchemaLockKeyByPosition[getSchemaPositionKey(pageIndex, schemaIndex)] = lockKey;
+        if (schema.__isLocked) nextLockedSchemaNames.push(lockKey);
+      });
+    });
+    previousSchemaLockKeyByPositionRef.current = nextSchemaLockKeyByPosition;
+    lockedSchemaNamesRef.current = nextLockedSchemaNames;
+    setLockedSchemaNames(nextLockedSchemaNames);
+  }
+
+  async function saveSettings(options?: { designerTemplateOverride?: PdfmeTemplate | null; lockedSchemaNamesOverride?: string[] }) {
+    if (!editingTemplate) return null;
+    const lockKeys = options?.lockedSchemaNamesOverride ?? lockedSchemaNames;
+    let currentDesignerTemplate = options?.designerTemplateOverride ?? getLiveDesignerTemplate();
 
     if (currentDesignerTemplate && currentDesignerTemplate.schemas) {
-      currentDesignerTemplate = {
-        ...currentDesignerTemplate,
-        schemas: currentDesignerTemplate.schemas.map((pageSchemas, pageIndex) => {
-          if (!Array.isArray(pageSchemas)) return pageSchemas;
-          return pageSchemas.map((schema, schemaIndex) => {
-            const schemaName = schema.name?.trim() || '';
-            const isLocked = schemaName ? isSchemaLocked(pageIndex, schemaName, schemaIndex) : false;
-            return {
-              ...schema,
-              __isLocked: isLocked
-            };
-          });
-        }) as any
-      };
+      currentDesignerTemplate = applyLocksToTemplate(normalizePdfmeTemplateFonts(currentDesignerTemplate), lockKeys);
     }
 
     setError('');
@@ -641,19 +714,7 @@ export function TemplatesPage() {
       });
       if (currentDesignerTemplate) {
         setDesignerTemplate(currentDesignerTemplate);
-        const nextLockedSchemaNames: string[] = [];
-        const nextSchemaLockKeyByPosition: Record<string, string> = {};
-        currentDesignerTemplate.schemas.forEach((pageSchemas, pageIndex) => {
-          if (!Array.isArray(pageSchemas)) return;
-          pageSchemas.forEach((schema, schemaIndex) => {
-            if (!schema?.name) return;
-            const lockKey = getSchemaLockKey(pageIndex, schema.name);
-            nextSchemaLockKeyByPosition[getSchemaPositionKey(pageIndex, schemaIndex)] = lockKey;
-            if (schema.__isLocked) nextLockedSchemaNames.push(lockKey);
-          });
-        });
-        previousSchemaLockKeyByPositionRef.current = nextSchemaLockKeyByPosition;
-        setLockedSchemaNames(nextLockedSchemaNames);
+        refreshLockStateFromTemplate(currentDesignerTemplate);
       }
       setEditingTemplate(payload.template);
       if (!routeCode) await load();
@@ -706,16 +767,44 @@ export function TemplatesPage() {
     }
   }
 
-  function openDetailsDialog() {
-    if (!editingTemplate) return;
-    setDetailsName(editingTemplate.name);
-    setDetailsCode(editingTemplate.code);
-    setDetailsTags(editingTemplate.tags);
+  async function confirmDeleteVersion(versionId: string, versionNumber: number) {
+    if (!editingTemplate || editingTemplateVersions.length <= 1) return;
+    const confirmed = await confirmDanger({ text: `¿Eliminar la version ${versionNumber} de "${editingTemplate.name}"?` });
+    if (!confirmed) return;
+
+    setError('');
+    setDeletingVersionId(versionId);
+    try {
+      const payload = await apiRequest<{ template: TemplateItem }>(`/api/templates/${editingTemplate.id}/versions/${versionId}`, { method: 'DELETE' });
+      setEditingTemplate(payload.template);
+      setPageFormat(payload.template.pageFormat);
+      setPageOrientation(payload.template.pageOrientation === 'LANDSCAPE' ? 'LANDSCAPE' : 'PORTRAIT');
+      setPageWidthMm(payload.template.pageWidthMm);
+      setPageHeightMm(payload.template.pageHeightMm);
+      setDesignerTemplate(buildPdfmeTemplate(payload.template));
+      if (payload.template.versions.length <= 1) setVersionsDialogOpen(false);
+      if (!routeCode) await load();
+      await notifySuccess('Version eliminada.');
+    } catch (err) {
+      notifyError(err, 'No se pudo eliminar la version.');
+    } finally {
+      setDeletingVersionId('');
+    }
+  }
+
+  function openDetailsDialog(template = editingTemplate, mode: 'details' | 'tags' = 'details') {
+    if (!template) return;
+    setDetailsTemplate(template);
+    setDetailsMode(mode);
+    setDetailsName(template.name);
+    setDetailsCode(template.code);
+    setDetailsTags(template.tags);
     setDetailsDialogOpen(true);
   }
 
   async function saveDetails() {
-    if (!editingTemplate) return;
+    const targetTemplate = detailsTemplate ?? editingTemplate;
+    if (!targetTemplate) return;
     const nextName = detailsName.trim();
     const nextCode = detailsCode.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
 
@@ -733,7 +822,7 @@ export function TemplatesPage() {
     setSavingDetails(true);
     try {
       const tagNames = detailsTags.map((tag) => tag.trim()).filter(Boolean);
-      const payload = await apiRequest<{ template: TemplateItem }>('/api/templates/' + editingTemplate.id, {
+      const payload = await apiRequest<{ template: TemplateItem }>('/api/templates/' + targetTemplate.id, {
         method: 'PATCH',
         body: JSON.stringify({
           name: nextName,
@@ -741,9 +830,20 @@ export function TemplatesPage() {
           tagNames,
         }),
       });
-      setEditingTemplate(payload.template);
+      setTemplates((current) => current.map((template) => template.id === payload.template.id ? payload.template : template));
+      if (editingTemplate?.id === payload.template.id) setEditingTemplate(payload.template);
+      setAvailableTags((current) => {
+        const known = new Set(current.map((tag) => tag.name));
+        const created = tagNames.filter((tag) => !known.has(tag));
+        if (created.length === 0) return current;
+        return [
+          ...current,
+          ...created.map((tag) => ({ id: tag, name: tag, templateCount: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })),
+        ].sort((a, b) => a.name.localeCompare(b.name));
+      });
       setDetailsDialogOpen(false);
-      if (payload.template.code !== routeCode) {
+      setDetailsTemplate(null);
+      if (editingTemplate?.id === payload.template.id && payload.template.code !== routeCode) {
         navigate(`/templates/edit/${payload.template.code}`, { replace: true });
       }
       if (!routeCode) await load();
@@ -796,6 +896,12 @@ export function TemplatesPage() {
     try {
       const payload = await apiRequest<{ template: TemplateItem }>(`/api/templates/${template.id}/duplicate`, { method: 'POST' });
       setTemplates((current) => [payload.template, ...current]);
+      setEditingTemplate(payload.template);
+      setPageFormat(payload.template.pageFormat);
+      setPageOrientation(payload.template.pageOrientation === 'LANDSCAPE' ? 'LANDSCAPE' : 'PORTRAIT');
+      setPageWidthMm(payload.template.pageWidthMm);
+      setPageHeightMm(payload.template.pageHeightMm);
+      setDesignerTemplate(buildPdfmeTemplate(payload.template));
       navigate(`/templates/edit/${payload.template.code}`);
     } catch (err) {
       notifyError(err, 'No se pudo duplicar la plantilla.');
@@ -826,6 +932,126 @@ export function TemplatesPage() {
     setPageWidthMm(pageHeightMm);
     setPageHeightMm(pageWidthMm);
     setDesignerTemplate((current) => updatePdfmeBasePdf(current, { width: pageHeightMm, height: pageWidthMm }));
+  }
+
+  function shiftLockKeys(lockKeys: string[], pageIndex: number, direction: 'insert' | 'delete') {
+    return lockKeys.flatMap((lockKey) => {
+      const separatorIndex = lockKey.indexOf('::');
+      const keyPageIndex = Number(lockKey.slice(0, separatorIndex));
+      const schemaName = lockKey.slice(separatorIndex + 2);
+
+      if (!Number.isInteger(keyPageIndex) || separatorIndex === -1) return [lockKey];
+      if (direction === 'insert') {
+        return [getSchemaLockKey(keyPageIndex >= pageIndex ? keyPageIndex + 1 : keyPageIndex, schemaName)];
+      }
+      if (keyPageIndex === pageIndex) return [];
+      return [getSchemaLockKey(keyPageIndex > pageIndex ? keyPageIndex - 1 : keyPageIndex, schemaName)];
+    });
+  }
+
+  function reorderLockKeys(lockKeys: string[], nextOrder: number[]) {
+    const nextIndexByCurrentIndex = new Map(nextOrder.map((currentIndex, nextIndex) => [currentIndex, nextIndex]));
+    return lockKeys.flatMap((lockKey) => {
+      const separatorIndex = lockKey.indexOf('::');
+      const keyPageIndex = Number(lockKey.slice(0, separatorIndex));
+      const schemaName = lockKey.slice(separatorIndex + 2);
+      const nextPageIndex = nextIndexByCurrentIndex.get(keyPageIndex);
+
+      if (!Number.isInteger(keyPageIndex) || separatorIndex === -1 || typeof nextPageIndex !== 'number') return [];
+      return [getSchemaLockKey(nextPageIndex, schemaName)];
+    });
+  }
+
+  async function applyPendingTemplateChange(nextTemplate: PdfmeTemplate, nextLocks: string[], successMessage: string) {
+    lockedSchemaNamesRef.current = nextLocks;
+    setLockedSchemaNames(nextLocks);
+    designerRef.current?.updateTemplate(nextTemplate);
+    setDesignerTemplate(nextTemplate);
+    await notifySuccess(successMessage);
+  }
+
+  function getEditableDesignerTemplate() {
+    const liveTemplate = getLiveDesignerTemplate();
+    if (!liveTemplate?.schemas?.length) return null;
+    return liveTemplate;
+  }
+
+  async function insertPageBefore(pageIndex: number) {
+    const currentTemplate = getEditableDesignerTemplate();
+    if (!currentTemplate) return;
+    const safePageIndex = Math.max(0, Math.min(pageIndex, currentTemplate.schemas.length));
+    const nextLocks = shiftLockKeys(lockedSchemaNamesRef.current, safePageIndex, 'insert');
+    const nextTemplate = applyLocksToTemplate({
+      ...currentTemplate,
+      schemas: [
+        ...currentTemplate.schemas.slice(0, safePageIndex),
+        [],
+        ...currentTemplate.schemas.slice(safePageIndex),
+      ],
+    } as PdfmeTemplate, nextLocks);
+
+    await applyPendingTemplateChange(nextTemplate, nextLocks, 'Hoja agregada. Presiona Guardar para confirmar el cambio.');
+  }
+
+  async function insertPageAfter(pageIndex: number) {
+    const currentTemplate = getEditableDesignerTemplate();
+    if (!currentTemplate) return;
+    const safePageIndex = Math.max(0, Math.min(pageIndex + 1, currentTemplate.schemas.length));
+    const nextLocks = shiftLockKeys(lockedSchemaNamesRef.current, safePageIndex, 'insert');
+    const nextTemplate = applyLocksToTemplate({
+      ...currentTemplate,
+      schemas: [
+        ...currentTemplate.schemas.slice(0, safePageIndex),
+        [],
+        ...currentTemplate.schemas.slice(safePageIndex),
+      ],
+    } as PdfmeTemplate, nextLocks);
+
+    await applyPendingTemplateChange(nextTemplate, nextLocks, 'Hoja agregada. Presiona Guardar para confirmar el cambio.');
+  }
+
+  async function deletePage(pageIndex: number) {
+    const currentTemplate = getEditableDesignerTemplate();
+    if (!currentTemplate) return;
+    if (currentTemplate.schemas.length <= 1) {
+      notifyError('No se puede eliminar la unica hoja de la plantilla.');
+      return;
+    }
+
+    const safePageIndex = Math.max(0, Math.min(pageIndex, currentTemplate.schemas.length - 1));
+    const nextLocks = shiftLockKeys(lockedSchemaNamesRef.current, safePageIndex, 'delete');
+    const nextTemplate = applyLocksToTemplate({
+      ...currentTemplate,
+      schemas: currentTemplate.schemas.filter((_pageSchemas, index) => index !== safePageIndex),
+    } as PdfmeTemplate, nextLocks);
+
+    await applyPendingTemplateChange(nextTemplate, nextLocks, 'Hoja eliminada. Presiona Guardar para confirmar el cambio.');
+  }
+
+  async function moveActivePage(direction: 'up' | 'down') {
+    const currentTemplate = getEditableDesignerTemplate();
+    if (!currentTemplate || currentTemplate.schemas.length <= 1) return;
+    const activePageIndex = Math.max(0, Math.min(getActivePdfmePageIndex(), currentTemplate.schemas.length - 1));
+    const targetPageIndex = direction === 'up' ? activePageIndex - 1 : activePageIndex + 1;
+
+    if (targetPageIndex < 0 || targetPageIndex >= currentTemplate.schemas.length) return;
+
+    const nextOrder = currentTemplate.schemas.map((_pageSchemas, index) => index);
+    const [moved] = nextOrder.splice(activePageIndex, 1);
+    nextOrder.splice(targetPageIndex, 0, moved);
+    const nextLocks = reorderLockKeys(lockedSchemaNamesRef.current, nextOrder);
+    const nextTemplate = applyLocksToTemplate({
+      ...currentTemplate,
+      schemas: nextOrder.map((pageIndex) => currentTemplate.schemas[pageIndex] ?? []),
+    } as PdfmeTemplate, nextLocks);
+
+    await applyPendingTemplateChange(nextTemplate, nextLocks, `Hoja activa movida ${direction === 'up' ? 'arriba' : 'abajo'}. Presiona Guardar para confirmar el cambio.`);
+  }
+
+  function getActivePdfmePageIndex() {
+    const pagerText = document.querySelector('.pdfme-ui-pager strong')?.textContent?.trim() ?? '';
+    const pageNumber = Number(pagerText.split('/')[0]);
+    return Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber - 1 : 0;
   }
 
   const prevSchemasRef = useRef<Record<string, string>>({});
@@ -872,8 +1098,145 @@ export function TemplatesPage() {
       const container = document.querySelector('.pdfme-workspace');
       if (!container) return;
       const liveTemplate = designerRef.current?.getTemplate() ?? designerTemplate;
+      const parent = container.parentElement || document;
 
-      // 1. Mark locked canvas elements without mutating pdfme's internal selectable class.
+      // 1. Replace pdfme's page menu with a local menu that keeps changes pending until Save.
+      if (!isPreviewRoute) {
+        const pageCount = Array.isArray(liveTemplate.schemas) ? liveTemplate.schemas.length : 0;
+        const controlBar = container.querySelector('.pdfme-ui-control-bar') as HTMLElement | null;
+        const nativeMenuButton = controlBar?.querySelector('.pdfme-ui-context-menu') as HTMLElement | null;
+        if (nativeMenuButton) nativeMenuButton.style.display = 'none';
+
+        if (controlBar) {
+          let pageMenuWrap = controlBar.querySelector('.pdfme-server-page-menu-wrap') as HTMLElement | null;
+          if (!pageMenuWrap) {
+            pageMenuWrap = document.createElement('span');
+            pageMenuWrap.className = 'pdfme-server-page-menu-wrap';
+            pageMenuWrap.innerHTML = `
+              <button class="pdfme-server-page-menu-trigger" type="button" title="Opciones de hoja" aria-label="Opciones de hoja">
+                ${renderLibraryIcon(EllipsisIcon, 16)}
+              </button>
+              <button class="pdfme-server-page-move-up-trigger" type="button" title="Mover hoja activa arriba" aria-label="Mover hoja activa arriba" hidden>
+                ${renderLibraryIcon(ArrowUpIcon, 16)}
+              </button>
+              <button class="pdfme-server-page-move-down-trigger" type="button" title="Mover hoja activa abajo" aria-label="Mover hoja activa abajo" hidden>
+                ${renderLibraryIcon(ArrowDownIcon, 16)}
+              </button>
+              <div class="pdfme-server-page-dropdown ant-dropdown ant-dropdown-placement-topRight" hidden>
+                <ul class="pdfme-server-page-menu ant-dropdown-menu ant-dropdown-menu-root ant-dropdown-menu-vertical ant-dropdown-menu-light" role="menu"></ul>
+              </div>
+            `;
+            controlBar.appendChild(pageMenuWrap);
+          }
+
+          const trigger = pageMenuWrap.querySelector('.pdfme-server-page-menu-trigger') as HTMLButtonElement | null;
+          const moveUpTrigger = pageMenuWrap.querySelector('.pdfme-server-page-move-up-trigger') as HTMLButtonElement | null;
+          const moveDownTrigger = pageMenuWrap.querySelector('.pdfme-server-page-move-down-trigger') as HTMLButtonElement | null;
+          const dropdown = pageMenuWrap.querySelector('.pdfme-server-page-dropdown') as HTMLElement | null;
+          const menu = pageMenuWrap.querySelector('.pdfme-server-page-menu') as HTMLElement | null;
+
+          const activePageIndex = getActivePdfmePageIndex();
+          if (moveUpTrigger) {
+            moveUpTrigger.hidden = pageCount <= 1 || activePageIndex <= 0;
+            if (moveUpTrigger.dataset.pdfmeServerPageMoveReady !== 'true') {
+              moveUpTrigger.dataset.pdfmeServerPageMoveReady = 'true';
+              moveUpTrigger.onclick = (event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                void moveActivePage('up');
+              };
+            }
+          }
+
+          if (moveDownTrigger) {
+            moveDownTrigger.hidden = pageCount <= 1 || activePageIndex >= pageCount - 1;
+            if (moveDownTrigger.dataset.pdfmeServerPageMoveReady !== 'true') {
+              moveDownTrigger.dataset.pdfmeServerPageMoveReady = 'true';
+              moveDownTrigger.onclick = (event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                void moveActivePage('down');
+              };
+            }
+          }
+
+          if (trigger && dropdown && menu) {
+            const openPageIndex = Number(pageMenuWrap.dataset.pdfmeServerOpenPageIndex);
+            if (!dropdown.hidden && Number.isFinite(openPageIndex) && openPageIndex !== activePageIndex) {
+              dropdown.hidden = true;
+              trigger.classList.remove('is-open');
+              trigger.setAttribute('aria-expanded', 'false');
+              delete pageMenuWrap.dataset.pdfmeServerOpenPageIndex;
+            }
+
+            menu.innerHTML = '';
+            const addMenuItem = (label: string, action: 'insert-before' | 'insert-after' | 'delete') => {
+              const item = document.createElement('li');
+              item.className = 'pdfme-server-page-menu-item ant-dropdown-menu-item ant-dropdown-menu-item-only-child';
+              item.role = 'menuitem';
+              item.tabIndex = -1;
+              item.dataset.pdfmeServerPageAction = action;
+              const icon = action === 'delete'
+                ? renderLibraryIcon(DeleteIcon, 14)
+                : action === 'insert-before'
+                  ? renderLibraryIcon(VerticalAlignTopIcon, 14)
+                  : renderLibraryIcon(VerticalAlignBottomIcon, 14);
+              item.innerHTML = `<span class="ant-dropdown-menu-title-content pdfme-server-page-menu-content"><span class="pdfme-server-page-menu-icon">${icon}</span><span>${label}</span></span>`;
+              const runPageAction = (event: Event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                if (item.dataset.pdfmeServerPageActionRunning === 'true') return;
+                item.dataset.pdfmeServerPageActionRunning = 'true';
+                dropdown.hidden = true;
+                trigger.classList.remove('is-open');
+                trigger.setAttribute('aria-expanded', 'false');
+                const targetPageIndex = Number(pageMenuWrap.dataset.pdfmeServerOpenPageIndex);
+                delete pageMenuWrap.dataset.pdfmeServerOpenPageIndex;
+                const safeTargetPageIndex = Number.isFinite(targetPageIndex) ? targetPageIndex : getActivePdfmePageIndex();
+                if (action === 'insert-before') {
+                  void insertPageBefore(safeTargetPageIndex);
+                  window.setTimeout(() => { delete item.dataset.pdfmeServerPageActionRunning; }, 400);
+                  return;
+                }
+                if (action === 'insert-after') {
+                  void insertPageAfter(safeTargetPageIndex);
+                  window.setTimeout(() => { delete item.dataset.pdfmeServerPageActionRunning; }, 400);
+                  return;
+                }
+                void deletePage(safeTargetPageIndex);
+                window.setTimeout(() => { delete item.dataset.pdfmeServerPageActionRunning; }, 400);
+              };
+              item.onpointerdown = runPageAction;
+              item.onmousedown = runPageAction;
+              item.onclick = runPageAction;
+              menu.appendChild(item);
+            };
+
+            addMenuItem('Insertar página arriba', 'insert-before');
+            addMenuItem('Insertar página abajo', 'insert-after');
+            if (pageCount > 1) addMenuItem('Eliminar página actual', 'delete');
+
+            if (trigger.dataset.pdfmeServerPageMenuReady !== 'true') {
+              trigger.dataset.pdfmeServerPageMenuReady = 'true';
+              trigger.onclick = (event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                const willOpen = dropdown.hidden;
+                dropdown.hidden = !willOpen;
+                trigger.classList.toggle('is-open', willOpen);
+                trigger.setAttribute('aria-expanded', String(willOpen));
+                if (willOpen) {
+                  pageMenuWrap.dataset.pdfmeServerOpenPageIndex = String(getActivePdfmePageIndex());
+                } else {
+                  delete pageMenuWrap.dataset.pdfmeServerOpenPageIndex;
+                }
+              };
+            }
+          }
+        }
+      }
+
+      // 2. Mark locked canvas elements without mutating pdfme's internal selectable class.
       // pdfme uses `.selectable` for drag/measurement; removing it during pointer moves can
       // trigger an updateRect -> setState loop in its internal resize observer.
       liveTemplate.schemas.forEach((pageSchemas, pageIndex) => {
@@ -900,17 +1263,21 @@ export function TemplatesPage() {
         });
       });
 
-      // 2. Render lock/unlock buttons in the visible sidebar element list.
+      // 3. Render lock/unlock buttons in the visible sidebar element list.
       // pdfme reuses this DOM when switching pages, so handlers and metadata must be
       // refreshed every pass instead of only when the button is first created.
-      const parent = container.parentElement || document;
-      const listItems = parent.querySelectorAll('ul > li');
-      const rows = Array.from(listItems).map((li) => {
-        const rowDiv = li.firstElementChild as HTMLDivElement | null;
+      const listView = parent.querySelector('.pdfme-designer-list-view') as HTMLElement | null;
+      const injectedRows = listView?.querySelectorAll('.schema-sidebar-row') ?? [];
+      const fallbackItems = injectedRows.length > 0 ? [] : (listView?.querySelectorAll('ul > li') ?? []);
+      const rowElements = injectedRows.length > 0
+        ? Array.from(injectedRows)
+        : Array.from(fallbackItems).map((li) => li.firstElementChild).filter(Boolean);
+      const rows = rowElements.map((element) => {
+        const rowDiv = element as HTMLDivElement;
         const span = (rowDiv?.querySelector('span[title="Editar"]') || rowDiv?.querySelector('span[title="Edit"]')) as HTMLSpanElement | null;
-        const schemaName = span?.textContent?.trim() || '';
-        return { rowDiv, schemaName };
-      }).filter((row): row is { rowDiv: HTMLDivElement; schemaName: string } => Boolean(row.rowDiv && row.schemaName));
+        const schemaName = rowDiv.dataset.pdfmeSchemaName || span?.textContent?.trim() || '';
+        return { rowDiv, schemaName, span };
+      }).filter((row): row is { rowDiv: HTMLDivElement; schemaName: string; span: HTMLSpanElement } => Boolean(row.rowDiv && row.schemaName && row.span));
 
       const visibleNames = new Set(rows.map((row) => row.schemaName));
       let activePageIndex = 0;
@@ -944,10 +1311,14 @@ export function TemplatesPage() {
 
         if (foundPageIndex === -1) return;
 
-        const lockKey = getSchemaLockKey(foundPageIndex, schemaName);
         const isLocked = isSchemaLocked(foundPageIndex, schemaName, foundSchemaIndex);
         const desiredTitle = isLocked ? 'Desbloquear' : 'Bloquear';
-        const deseadoState = isLocked ? 'locked' : 'unlocked';
+        const desiredState = isLocked ? 'locked' : 'unlocked';
+
+        rowDiv.classList.add('schema-sidebar-row');
+        if (!rowDiv.dataset.pdfmeSchemaName) {
+          rowDiv.dataset.pdfmeSchemaName = schemaName;
+        }
 
         rowDiv.dataset.schemaLocked = isLocked ? 'true' : 'false';
         const blockLockedRowAction = (event: MouseEvent) => {
@@ -964,25 +1335,7 @@ export function TemplatesPage() {
         if (!lockBtn) {
           lockBtn = document.createElement('button');
           lockBtn.className = 'sidebar-lock-btn';
-          lockBtn.style.background = 'none';
-          lockBtn.style.border = 'none';
-          lockBtn.style.cursor = 'pointer';
-          lockBtn.style.padding = '4px';
-          lockBtn.style.display = 'flex';
-          lockBtn.style.alignItems = 'center';
-          lockBtn.style.justifyContent = 'center';
-          lockBtn.style.marginLeft = 'auto';
-          lockBtn.style.outline = 'none';
-          lockBtn.style.transition = 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)';
-
-          lockBtn.style.setProperty('pointer-events', 'auto', 'important');
-
-          lockBtn.addEventListener('mouseenter', () => {
-            if (lockBtn) lockBtn.style.transform = 'scale(1.2)';
-          });
-          lockBtn.addEventListener('mouseleave', () => {
-            if (lockBtn) lockBtn.style.transform = 'scale(1)';
-          });
+          lockBtn.type = 'button';
 
           rowDiv.appendChild(lockBtn);
         }
@@ -1003,24 +1356,10 @@ export function TemplatesPage() {
           event.preventDefault();
         };
 
-        if (lockBtn.getAttribute('data-state') !== deseadoState || !lockBtn.innerHTML.trim()) {
-          lockBtn.setAttribute('data-state', deseadoState);
+        if (lockBtn.getAttribute('data-state') !== desiredState || !lockBtn.innerHTML.trim()) {
+          lockBtn.setAttribute('data-state', desiredState);
           lockBtn.title = desiredTitle;
-          if (isLocked) {
-            lockBtn.style.color = '#ff4d4f';
-            lockBtn.innerHTML = `
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-              </svg>
-            `;
-          } else {
-            lockBtn.style.color = '#ffffff';
-            lockBtn.innerHTML = `
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
-              </svg>
-            `;
-          }
+          lockBtn.innerHTML = renderLibraryIcon(isLocked ? LockIcon : UnlockIcon, 16);
         }
       });
     };
@@ -1053,9 +1392,22 @@ export function TemplatesPage() {
       });
     };
 
+    const closePageMenu = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.pdfme-server-page-menu-wrap')) return;
+      document.querySelectorAll('.pdfme-server-page-dropdown').forEach((dropdown) => {
+        (dropdown as HTMLElement).hidden = true;
+      });
+      document.querySelectorAll('.pdfme-server-page-menu-trigger.is-open').forEach((trigger) => {
+        trigger.classList.remove('is-open');
+        trigger.setAttribute('aria-expanded', 'false');
+      });
+    };
+
     observedEl?.addEventListener('click', scheduleDOMUpdate, true);
     observedEl?.addEventListener('pointerup', scheduleDOMUpdate, true);
     observedEl?.addEventListener('keyup', scheduleDOMUpdate, true);
+    document.addEventListener('mousedown', closePageMenu, true);
 
     return () => {
       clearTimeout(t1);
@@ -1064,22 +1416,50 @@ export function TemplatesPage() {
       observedEl?.removeEventListener('click', scheduleDOMUpdate, true);
       observedEl?.removeEventListener('pointerup', scheduleDOMUpdate, true);
       observedEl?.removeEventListener('keyup', scheduleDOMUpdate, true);
+      document.removeEventListener('mousedown', closePageMenu, true);
       observer.disconnect();
     };
-  }, [designerTemplate, lockedSchemaNames, editingTemplate]);
+  }, [designerTemplate, lockedSchemaNames, editingTemplate, isPreviewRoute, saving, switchingVersion]);
 
-  function toggleLockSchema(pageIndex: number, schemaName: string, schemaIndex?: number) {
+  async function toggleLockSchema(pageIndex: number, schemaName: string, schemaIndex?: number) {
+    if (!editingTemplate) return;
+
     const lockKey = getSchemaLockKey(pageIndex, schemaName);
     const previousLockKey = typeof schemaIndex === 'number'
       ? previousSchemaLockKeyByPositionRef.current[getSchemaPositionKey(pageIndex, schemaIndex)]
       : undefined;
-    setLockedSchemaNames((current) => {
-      const exists = current.includes(lockKey) || Boolean(previousLockKey && current.includes(previousLockKey));
-      if (exists) {
-        return current.filter((name) => name !== lockKey && name !== previousLockKey);
+    const currentLocks = lockedSchemaNamesRef.current;
+    const exists = currentLocks.includes(lockKey) || Boolean(previousLockKey && currentLocks.includes(previousLockKey));
+    const nextLocks = exists
+      ? currentLocks.filter((name) => name !== lockKey && name !== previousLockKey)
+      : [...currentLocks, lockKey];
+    const currentTemplate = getEditableDesignerTemplate();
+    const previousTemplate = designerTemplate;
+
+    lockedSchemaNamesRef.current = nextLocks;
+    setLockedSchemaNames(nextLocks);
+    if (!currentTemplate) return;
+
+    const nextTemplate = applyLocksToTemplate(currentTemplate, nextLocks);
+    designerRef.current?.updateTemplate(nextTemplate);
+    setDesignerTemplate(nextTemplate);
+
+    try {
+      const payload = await apiRequest<{ template: TemplateItem }>(`/api/templates/${editingTemplate.id}/schema-locks`, {
+        method: 'PATCH',
+        body: JSON.stringify({ lockedSchemaNames: nextLocks }),
+      });
+      setEditingTemplate(payload.template);
+      refreshLockStateFromTemplate(buildPdfmeTemplate(payload.template));
+    } catch (err) {
+      lockedSchemaNamesRef.current = currentLocks;
+      setLockedSchemaNames(currentLocks);
+      if (previousTemplate) {
+        designerRef.current?.updateTemplate(previousTemplate);
+        setDesignerTemplate(previousTemplate);
       }
-      return [...current, lockKey];
-    });
+      notifyError(err, 'No se pudo guardar el bloqueo en la base de datos.');
+    }
   }
 
   function getSchemaIcon(type: string) {
@@ -1119,6 +1499,13 @@ export function TemplatesPage() {
             sx={{ maxWidth: 360 }}
             value={search}
           />
+          <Autocomplete
+            onChange={(_event, value) => { setTagFilter(value ?? ''); setPage(0); }}
+            options={availableTags.map((tag) => tag.name)}
+            renderInput={(params) => <TextField {...params} label="Etiqueta" placeholder="Todas" size="small" />}
+            sx={{ maxWidth: 220, minWidth: { xs: 160, md: 200 } }}
+            value={tagFilter || null}
+          />
           <Box sx={{ flexGrow: 1 }} />
           {can(user, 'templates.create') ? <Button onClick={openHeaderAction} size="small" variant="contained">Agregar</Button> : null}
         </Stack>,
@@ -1155,7 +1542,7 @@ export function TemplatesPage() {
     );
 
     return () => setHeaderControls(null);
-  }, [editingTemplate, hasMultipleVersions, isPreviewRoute, navigate, pageFormat, pageHeightMm, pageOrientation, pageWidthMm, saving, savingDetails, savingVersion, setHeaderControls, switchingVersion, user]);
+  }, [availableTags, designerTemplate?.schemas?.length, editingTemplate, hasMultipleVersions, isPreviewRoute, navigate, pageFormat, pageHeightMm, pageOrientation, pageWidthMm, saving, savingDetails, savingVersion, search, setHeaderControls, switchingVersion, tagFilter, user]);
 
   useEffect(() => {
     const originalConfirm = window.confirm;
@@ -1173,6 +1560,39 @@ export function TemplatesPage() {
 
 
 
+  const detailsDialog = (
+    <AppFormDialog
+      actions={(
+        <>
+          <Button onClick={() => { setDetailsDialogOpen(false); setDetailsTemplate(null); }}>Cancelar</Button>
+          <Button disabled={savingDetails || detailsName.trim().length < 2 || !detailsCode.trim()} onClick={() => void saveDetails()} variant="contained">
+            Guardar
+          </Button>
+        </>
+      )}
+      maxWidth="sm"
+      onClose={() => { setDetailsDialogOpen(false); setDetailsTemplate(null); }}
+      open={detailsDialogOpen}
+      title={detailsMode === 'tags' ? 'Retiquetar plantilla' : 'Datos de plantilla'}
+    >
+      <Stack spacing={2}>
+        {detailsMode === 'details' ? (
+          <>
+            <TextField fullWidth label="Nombre" onChange={(event) => setDetailsName(event.target.value)} value={detailsName} />
+            <TextField fullWidth helperText="Identificador usado por apps/API." label="Codigo" onChange={(event) => setDetailsCode(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} value={detailsCode} />
+          </>
+        ) : null}
+        <Autocomplete
+          freeSolo
+          multiple
+          onChange={(_event, value) => setDetailsTags(Array.from(new Set(value.map((tag) => tag.trim()).filter(Boolean))))}
+          options={availableTags.map((tag) => tag.name)}
+          renderInput={(params) => <TextField {...params} helperText="Selecciona o escribe tags." label="Tags" />}
+          value={detailsTags}
+        />
+      </Stack>
+    </AppFormDialog>
+  );
   if (routeCode && (loadingTemplate || !editingTemplate)) {
     return (
       <Box sx={{ display: 'grid', height: '100%', minHeight: 0, placeItems: 'center', width: '100%' }}>
@@ -1190,7 +1610,7 @@ export function TemplatesPage() {
             <List disablePadding>
               {editingTemplateVersions.map((version) => (
                 <ListItemButton
-                  disabled={version.id === editingTemplate.versionId || switchingVersion}
+                  disabled={version.id === editingTemplate.versionId || switchingVersion || deletingVersionId === version.id}
                   key={version.id}
                   onClick={() => void switchVersion(version.id)}
                   selected={version.id === editingTemplate.versionId}
@@ -1199,6 +1619,18 @@ export function TemplatesPage() {
                     primary={`Version ${version.versionNumber}`}
                     secondary={`${version.pageCount} hoja${version.pageCount === 1 ? '' : 's'} · ${new Date(version.updatedAt).toLocaleString()}`}
                   />
+                  <Button
+                    color="error"
+                    disabled={editingTemplateVersions.length <= 1 || deletingVersionId === version.id || switchingVersion}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void confirmDeleteVersion(version.id, version.versionNumber);
+                    }}
+                    size="small"
+                    startIcon={<DeleteOutlined />}
+                  >
+                    Eliminar
+                  </Button>
                 </ListItemButton>
               ))}
             </List>
@@ -1290,33 +1722,7 @@ export function TemplatesPage() {
             </Button>
           </DialogActions>
         </Dialog>
-        <AppFormDialog
-          actions={(
-            <>
-              <Button onClick={() => setDetailsDialogOpen(false)}>Cancelar</Button>
-              <Button disabled={savingDetails || detailsName.trim().length < 2 || !detailsCode.trim()} onClick={() => void saveDetails()} variant="contained">
-                Guardar
-              </Button>
-            </>
-          )}
-          maxWidth="sm"
-          onClose={() => setDetailsDialogOpen(false)}
-          open={detailsDialogOpen}
-          title="Datos de plantilla"
-        >
-            <Stack spacing={2}>
-              <TextField fullWidth label="Nombre" onChange={(event) => setDetailsName(event.target.value)} value={detailsName} />
-              <TextField fullWidth helperText="Identificador usado por apps/API." label="Codigo" onChange={(event) => setDetailsCode(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} value={detailsCode} />
-              <Autocomplete
-                freeSolo
-                multiple
-                onChange={(_event, value) => setDetailsTags(Array.from(new Set(value.map((tag) => tag.trim()).filter(Boolean))))}
-                options={availableTags.map((tag) => tag.name)}
-                renderInput={(params) => <TextField {...params} helperText="Selecciona o escribe tags." label="Tags" />}
-                value={detailsTags}
-              />
-            </Stack>
-        </AppFormDialog>
+        {detailsDialog}
         <Backdrop
           open={editorBusy}
           sx={{
@@ -1346,6 +1752,7 @@ export function TemplatesPage() {
   }
 
   return (
+    <>
     <Stack spacing={2} sx={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Card sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, p: 0 }}>
         {loading ? (
@@ -1366,6 +1773,9 @@ export function TemplatesPage() {
                 <Stack key="a" direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
                   <Button onClick={() => navigate(`/templates/preview/${template.code}`)} size="small" startIcon={<EyeOutlined />}>Preview</Button>
                   <Button onClick={() => navigate(`/templates/edit/${template.code}`)} size="small" startIcon={<EditOutlined />}>Editar</Button>
+                  {can(user, 'templates.edit') ? (
+                    <Button onClick={() => openDetailsDialog(template)} size="small" startIcon={<UnorderedListOutlined />}>Propiedades</Button>
+                  ) : null}
                   {can(user, 'templates.create') ? (
                     <Button disabled={duplicatingId === template.id} onClick={() => void duplicate(template)} size="small" startIcon={<CopyOutlined />}>Duplicar</Button>
                   ) : null}
@@ -1382,5 +1792,7 @@ export function TemplatesPage() {
         )}
       </Card>
     </Stack>
+    {detailsDialog}
+    </>
   );
 }

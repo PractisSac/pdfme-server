@@ -50,6 +50,7 @@ type PdfmeDesignerProps = {
 
 export type PdfmeDesignerHandle = {
   getTemplate: () => PdfmeTemplate | null;
+  updateTemplate: (template: PdfmeTemplate) => void;
 };
 
 export const PdfmeDesigner = forwardRef<PdfmeDesignerHandle, PdfmeDesignerProps>(function PdfmeDesigner({ mode, template }, ref) {
@@ -57,7 +58,6 @@ export const PdfmeDesigner = forwardRef<PdfmeDesignerHandle, PdfmeDesignerProps>
   const designerRef = useRef<Designer | null>(null);
   const internalTemplateRef = useRef<PdfmeTemplate | null>(null);
   const modeRef = useRef(mode);
-  const skipNextTemplateSyncRef = useRef(false);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -65,6 +65,11 @@ export const PdfmeDesigner = forwardRef<PdfmeDesignerHandle, PdfmeDesignerProps>
 
   useImperativeHandle(ref, () => ({
     getTemplate: () => designerRef.current?.getTemplate() ?? internalTemplateRef.current,
+    updateTemplate: (nextTemplate) => {
+      const normalizedTemplate = normalizePdfmeTemplateFonts(nextTemplate);
+      internalTemplateRef.current = normalizedTemplate;
+      designerRef.current?.updateTemplate(normalizedTemplate);
+    },
   }), []);
 
   useEffect(() => {
@@ -97,7 +102,6 @@ export const PdfmeDesigner = forwardRef<PdfmeDesignerHandle, PdfmeDesignerProps>
       designerRef.current?.destroy();
       designerRef.current = null;
       internalTemplateRef.current = null;
-      skipNextTemplateSyncRef.current = false;
     };
   }, []);
 
@@ -109,20 +113,27 @@ export const PdfmeDesigner = forwardRef<PdfmeDesignerHandle, PdfmeDesignerProps>
     });
   }, [mode]);
 
-  const lastSchemasLengthRef = useRef(template.schemas.length);
+  useEffect(() => {
+    designerRef.current?.updateTemplate(normalizePdfmeTemplateFonts(template));
+  }, [template]);
 
   useEffect(() => {
-    const schemasLengthChanged = lastSchemasLengthRef.current !== template.schemas.length;
-    lastSchemasLengthRef.current = template.schemas.length;
+    if (!containerRef.current || typeof ResizeObserver === 'undefined') return undefined;
 
-    if (!schemasLengthChanged && skipNextTemplateSyncRef.current && internalTemplateRef.current === template) {
-      skipNextTemplateSyncRef.current = false;
-      return;
-    }
+    let frameId = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+    });
 
-    designerRef.current?.updateTemplate(normalizePdfmeTemplateFonts(template));
-    skipNextTemplateSyncRef.current = false;
-  }, [template]);
+    observer.observe(containerRef.current);
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, []);
 
   return <div ref={containerRef} className="pdfme-container" />;
 });

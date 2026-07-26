@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 
 import { authenticateApiKey } from '../services/api-credentials.service.js';
-import { createTemplate, createTemplateVersion, deleteTemplate, duplicateTemplate, getTemplateByCode, listTemplateCatalog, setCurrentTemplateVersion, updateTemplateDetails, updateTemplatePageSettings } from '../services/templates.service.js';
+import { CannotDeleteTemplateVersionError, createTemplate, createTemplateVersion, deleteTemplate, deleteTemplateVersion, duplicateTemplate, getTemplateByCode, listTemplateCatalog, setCurrentTemplateVersion, updateTemplateDetails, updateTemplatePageSettings, updateTemplateSchemaLocks } from '../services/templates.service.js';
 import { requirePermission } from '../middleware/session-auth.js';
 import { prisma } from '../prisma.js';
 import { logAuditEvent, getSpanishRole } from '../services/audit.service.js';
@@ -31,8 +31,17 @@ const updateTemplateDetailsSchema = z.object({
   tagNames: z.array(z.string().min(1)).optional(),
 });
 
-templatesRouter.get('/templates', requirePermission('templates.view'), async (_request, response) => {
-  response.json({ data: await listTemplateCatalog() });
+const updateSchemaLocksSchema = z.object({
+  lockedSchemaNames: z.array(z.string().min(1)),
+});
+
+templatesRouter.get('/templates', requirePermission('templates.view'), async (request, response) => {
+  response.json({
+    data: await listTemplateCatalog({
+      search: typeof request.query.search === 'string' ? request.query.search : undefined,
+      tag: typeof request.query.tag === 'string' ? request.query.tag : undefined,
+    }),
+  });
 });
 
 templatesRouter.get('/templates/by-code/:code', requirePermission('templates.view'), async (request, response) => {
@@ -186,6 +195,42 @@ templatesRouter.patch('/templates/:id/page-settings', requirePermission('templat
   }
 });
 
+templatesRouter.patch('/templates/:id/schema-locks', requirePermission('templates.edit'), async (request, response) => {
+  const parsed = updateSchemaLocksSchema.safeParse(request.body);
+
+  if (!parsed.success) {
+    response.status(400).json({ message: 'Datos invalidos para guardar los bloqueos.' });
+    return;
+  }
+
+  try {
+    const template = await updateTemplateSchemaLocks(request.params.id, parsed.data);
+
+    const actor = response.locals.user;
+    const actorRole = getSpanishRole(actor?.roles, actor?.isSuperAdmin);
+    const detail = `El ${actorRole.toLowerCase()} ${actor?.displayName || 'Desconocido'} ha actualizado los bloqueos de la plantilla "${template.name}"`;
+    await logAuditEvent({
+      actorId: actor?.id ?? null,
+      action: 'Actualizar bloqueos de plantilla',
+      entityType: 'TEMPLATE',
+      entityId: template.id,
+      metadata: {
+        detail,
+        actorName: actor?.displayName || 'Desconocido',
+        actorRole,
+        templateName: template.name,
+        templateCode: template.code,
+        lockedCount: parsed.data.lockedSchemaNames.length,
+        versionNumber: template.versionNumber,
+      }
+    });
+
+    response.json({ ok: true, template });
+  } catch {
+    response.status(404).json({ message: 'No se encontro la plantilla actual.' });
+  }
+});
+
 templatesRouter.post('/templates/:id/versions', requirePermission('templates.edit'), async (request, response) => {
   try {
     const template = await createTemplateVersion(request.params.id, response.locals.user?.id ?? null);
@@ -238,6 +283,38 @@ templatesRouter.patch('/templates/:id/versions/:versionId/current', requirePermi
 
     response.json({ ok: true, template });
   } catch {
+    response.status(404).json({ message: 'No se encontro la version solicitada.' });
+  }
+});
+
+templatesRouter.delete('/templates/:id/versions/:versionId', requirePermission('templates.edit'), async (request, response) => {
+  try {
+    const template = await deleteTemplateVersion(request.params.id, request.params.versionId);
+
+    const actor = response.locals.user;
+    const actorRole = getSpanishRole(actor?.roles, actor?.isSuperAdmin);
+    const detail = `El ${actorRole.toLowerCase()} ${actor?.displayName || 'Desconocido'} ha eliminado una version de la plantilla "${template.name}"`;
+    await logAuditEvent({
+      actorId: actor?.id ?? null,
+      action: 'Eliminar version de plantilla',
+      entityType: 'TEMPLATE',
+      entityId: template.id,
+      metadata: {
+        detail,
+        actorName: actor?.displayName || 'Desconocido',
+        actorRole,
+        templateName: template.name,
+        templateCode: template.code,
+        versionNumber: template.versionNumber,
+      }
+    });
+
+    response.json({ ok: true, template });
+  } catch (error) {
+    if (error instanceof CannotDeleteTemplateVersionError) {
+      response.status(error.message.includes('unica') ? 400 : 404).json({ message: error.message });
+      return;
+    }
     response.status(404).json({ message: 'No se encontro la version solicitada.' });
   }
 });

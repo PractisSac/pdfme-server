@@ -139,6 +139,42 @@ Puede significar:
 | Cloudflare 502 | El host origen no responde o el proxy esta apuntando al puerto equivocado. |
 | Backend responde, frontend no | Revisar nginx del frontend y variable de URL/proxy usada en build. |
 
+## Errores internos del panel
+
+Los endpoints internos del panel usan sesión por cookie y permisos. Si una ruta interna falla, normalmente responde JSON con `message`.
+
+| Endpoint | Código | Causa habitual | Acción |
+| --- | --- | --- | --- |
+| `GET /api/templates?search=&tag=` | `401` | Sesión expirada. | Volver a iniciar sesión. |
+| `GET /api/templates?search=&tag=` | `403` | El usuario no tiene `templates.view`. | Revisar rol/permisos. |
+| `PATCH /api/templates/:id` | `400` | `name`, `code` o `tagNames` inválidos. | Validar datos del formulario de propiedades. |
+| `PATCH /api/templates/:id` | `409` | Código duplicado o no actualizable. | Usar otro `code`. |
+| `PATCH /api/templates/:id/page-settings` | `400` | Formato, orientación, tamaño o JSON inválido. | Reintentar guardado y revisar el diseño. |
+| `PATCH /api/templates/:id/page-settings` | `404` | La plantilla actual no existe. | Recargar lista de plantillas. |
+| `PATCH /api/templates/:id/schema-locks` | `400` | `lockedSchemaNames` no es un arreglo de strings. | Enviar keys como `0::nombre_schema`. |
+| `PATCH /api/templates/:id/schema-locks` | `404` | No existe plantilla o versión actual. | Recargar la plantilla antes de bloquear. |
+| `DELETE /api/templates/:id/versions/:versionId` | `400` | Se intenta borrar la única versión. | Mantener al menos una versión. |
+| `DELETE /api/templates/:id/versions/:versionId` | `404` | Versión inexistente o backend sin la ruta actualizada. | Recargar versión/backend y verificar IDs. |
+| `DELETE /api/templates/:id` | `404` | Plantilla inexistente. | Recargar catálogo. |
+
+Ejemplo de error al borrar la única versión:
+
+```json
+{
+  "message": "No se puede eliminar la unica version de la plantilla."
+}
+```
+
+Ejemplo de error de locks:
+
+```json
+{
+  "message": "Datos invalidos para guardar los bloqueos."
+}
+```
+
+Después de borrar una versión correctamente, la respuesta devuelve la plantilla actualizada y las versiones restantes ya renumeradas.
+
 ## Logging recomendado
 
 | Dato | Registrar | No registrar |

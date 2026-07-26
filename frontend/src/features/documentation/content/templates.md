@@ -318,6 +318,26 @@ Bloquear un elemento evita seleccionarlo o moverlo accidentalmente en el editor.
 
 Usa bloqueo para fondos, marcos, firmas fijas y elementos terminados. Mantén desbloqueados solo los campos que todavía requieren ajustes visuales.
 
+Cuando bloqueas o desbloqueas un elemento, el sistema guarda ese estado en la base de datos dentro del `designerJson` de la versión actual. No es solo un cambio local del navegador. El elemento queda marcado con `__isLocked` y vuelve bloqueado al recargar la plantilla.
+
+Los elementos bloqueados no deben entrar en selección múltiple por arrastre. Esto protege fondos, marcos y componentes ya terminados cuando seleccionas varios campos con el cursor.
+
+## Acciones de hojas en el editor
+
+La barra interna de pdfme contiene controles para manipular la hoja activa. Las acciones visuales de hojas no se guardan definitivamente hasta presionar **Guardar**.
+
+| Acción | Cuándo aparece | Qué hace |
+| --- | --- | --- |
+| Insertar página arriba | Siempre que el editor esté activo. | Agrega una hoja vacía antes de la hoja activa. |
+| Insertar página abajo | Siempre que el editor esté activo. | Agrega una hoja vacía después de la hoja activa. |
+| Eliminar página actual | Solo si existe más de una hoja. | Quita la hoja activa. |
+| Mover hoja activa arriba | Solo si la hoja activa no es la primera y hay más de una hoja. | Intercambia la hoja activa con la anterior. |
+| Mover hoja activa abajo | Solo si la hoja activa no es la última y hay más de una hoja. | Intercambia la hoja activa con la siguiente. |
+
+Después de agregar, eliminar o mover hojas, revisa la vista previa y presiona **Guardar** para persistir el nuevo orden y contenido en base de datos. Si sales sin guardar, esos cambios de hoja no forman parte del contrato final.
+
+Los bloqueos sí se guardan inmediatamente por seguridad del diseño, aunque el resto del diseño espere a **Guardar**.
+
 ## Páginas, versiones y estado
 
 | Concepto | Efecto |
@@ -329,6 +349,10 @@ Usa bloqueo para fondos, marcos, firmas fijas y elementos terminados. Mantén de
 | `ARCHIVED` | No está disponible para render externo. |
 
 Duplicar páginas o plantillas no obliga a cambiar variables si el contrato externo debe seguir siendo el mismo.
+
+Al duplicar una plantilla, la copia carga su propia versión y su propio diseño para evitar que sigas viendo o editando la plantilla original por error.
+
+Cuando eliminas una versión, el sistema no permite borrar la única versión existente. Si quedan versiones, las renumera en orden desde `1`; por ejemplo, si borras la versión 1 de una plantilla con dos versiones, la versión 2 pasa a ser versión 1.
 
 ## Revisar el contrato detectado
 

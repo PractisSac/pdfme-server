@@ -2,6 +2,8 @@
 
 La API externa usa autenticación por header. Cada sistema consumidor debe tener su propia API key para facilitar auditoría, rotación y revocación sin afectar a otros clientes.
 
+El panel administrativo usa otra autenticación: sesión por cookie HTTP-only. No mezcles ambos mecanismos.
+
 ## Header requerido
 
 ```http
@@ -9,6 +11,45 @@ x-api-key: pk_live_xxxxxxxxxxxxxxxxx
 ```
 
 El header debe enviarse en todos los endpoints `/api/v1/*`.
+
+## Sesión interna del panel
+
+Los endpoints internos `/api/templates`, `/api/users`, `/api/permissions`, `/api/tags`, `/api/api-credentials` y `/api/audit-logs` usan la cookie creada al iniciar sesión.
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "********"
+}
+```
+
+Respuesta exitosa:
+
+```json
+{
+  "ok": true,
+  "user": {
+    "id": "user_id",
+    "email": "admin@example.com",
+    "displayName": "Admin"
+  }
+}
+```
+
+El backend responde con una cookie HTTP-only. El frontend debe enviar requests internos con credenciales para que esa cookie viaje automáticamente.
+
+| Endpoint | Uso |
+| --- | --- |
+| `POST /api/auth/login` | Inicia sesión. |
+| `GET /api/auth/me` | Valida la sesión actual. |
+| `POST /api/auth/logout` | Cierra sesión y limpia cookie. |
+
+No uses `x-api-key` para endpoints internos del panel. No uses la cookie del panel para `/api/v1/*` desde sistemas externos.
 
 ## Cómo obtener una API key
 

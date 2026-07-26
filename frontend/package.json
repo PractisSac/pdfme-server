@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:docker": "vite build",
+    "build:docker": "npm run patch:pdfme-ui && vite build",
+    "patch:pdfme-ui": "node scripts/patch-pdfme-ui.mjs",
+    "postinstall": "node scripts/patch-pdfme-ui.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "check": "tsc -b --noEmit"
   },

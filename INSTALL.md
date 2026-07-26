@@ -138,6 +138,14 @@ VITE_APP_NAME=PDF Server
 VITE_BACKEND_API_URL=
 ```
 
+Durante el build de Dokploy, el frontend aplica el injector de pdfme automáticamente:
+
+```txt
+frontend/scripts/patch-pdfme-ui.mjs
+```
+
+El Dockerfile copia `scripts/` antes de `npm ci` para que `postinstall` pueda parchear `@pdfme/ui`. Además, `npm run build:docker` vuelve a ejecutar `npm run patch:pdfme-ui` antes de `vite build`. Esto asegura que los fixes de copiar/pegar, bloqueo por selección, filas del sidebar y controles de páginas estén presentes también en producción.
+
 Variables runtime del frontend:
 
 ```env

@@ -164,6 +164,20 @@ function buildPageDesignerJson(designerJson: unknown, pageSchemas: unknown[]) {
   } as Prisma.InputJsonValue;
 }
 
+function applySchemaLocksToPageSchemas(pageSchemas: unknown[], pageIndex: number, lockedSchemaNames: Set<string>) {
+  return pageSchemas.map((schema) => {
+    if (!isRecord(schema)) return schema;
+
+    const schemaName = typeof schema.name === 'string' ? schema.name.trim() : '';
+    if (!schemaName) return { ...schema, __isLocked: false };
+
+    return {
+      ...schema,
+      __isLocked: lockedSchemaNames.has(`${pageIndex}::${schemaName}`),
+    };
+  });
+}
+
 function composeDesignerJson(pages: Prisma.TemplatePageGetPayload<Record<string, never>>[]) {
   const firstPageJson = pages[0]?.designerJson;
   const base = isRecord(firstPageJson) ? firstPageJson : DEFAULT_DESIGNER_JSON;
@@ -174,9 +188,22 @@ function composeDesignerJson(pages: Prisma.TemplatePageGetPayload<Record<string,
   };
 }
 
-export async function listTemplateCatalog() {
+export async function listTemplateCatalog(input: { search?: string; tag?: string } = {}) {
+  const search = input.search?.trim();
+  const tag = input.tag?.trim();
+  const where: Prisma.TemplateWhereInput = {
+    status: { not: 'ARCHIVED' },
+    ...(search ? {
+      OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { code: { contains: search, mode: 'insensitive' } },
+      ],
+    } : {}),
+    ...(tag ? { tags: { some: { tag: { name: tag } } } } : {}),
+  };
+
   const templates = await prisma.template.findMany({
-    where: { status: { not: 'ARCHIVED' } },
+    where,
     orderBy: { updatedAt: 'desc' },
     include: templateCatalogInclude,
   });
@@ -411,6 +438,30 @@ export async function updateTemplatePageSettings(id: string, input: {
   return mapTemplate(template);
 }
 
+export async function updateTemplateSchemaLocks(id: string, input: { lockedSchemaNames: string[] }) {
+  const currentVersion = await prisma.templateVersion.findFirstOrThrow({
+    where: { templateId: id, isCurrent: true },
+    include: { pages: { orderBy: { pageNumber: 'asc' } } },
+  });
+  const lockedSchemaNames = new Set(input.lockedSchemaNames.map((name) => name.trim()).filter(Boolean));
+
+  await prisma.$transaction(currentVersion.pages.map((page, pageIndex) => {
+    const pageSchemas = getSchemaPages(page.designerJson)[0] ?? [];
+    return prisma.templatePage.update({
+      where: { id: page.id },
+      data: {
+        designerJson: buildPageDesignerJson(
+          page.designerJson,
+          applySchemaLocksToPageSchemas(pageSchemas, pageIndex, lockedSchemaNames),
+        ),
+      },
+    });
+  }));
+
+  const template = await prisma.template.findUniqueOrThrow({ where: { id }, include: templateInclude });
+  return mapTemplate(template);
+}
+
 export async function setCurrentTemplateVersion(id: string, versionId: string) {
   await prisma.templateVersion.findFirstOrThrow({
     where: { id: versionId, templateId: id },
@@ -466,6 +517,45 @@ export async function createTemplateVersion(id: string, createdById?: string | n
         },
       },
     }),
+  ]);
+
+  const template = await prisma.template.findUniqueOrThrow({ where: { id }, include: templateInclude });
+  return mapTemplate(template);
+}
+
+export class CannotDeleteTemplateVersionError extends Error {
+  constructor(message = 'No se puede eliminar la version solicitada.') {
+    super(message);
+    this.name = 'CannotDeleteTemplateVersionError';
+  }
+}
+
+export async function deleteTemplateVersion(id: string, versionId: string) {
+  const versions = await prisma.templateVersion.findMany({
+    where: { templateId: id },
+    orderBy: { versionNumber: 'asc' },
+    select: { id: true, isCurrent: true, versionNumber: true },
+  });
+  const targetVersion = versions.find((version) => version.id === versionId);
+
+  if (!targetVersion) throw new CannotDeleteTemplateVersionError('No se encontro la version solicitada.');
+  if (versions.length <= 1) throw new CannotDeleteTemplateVersionError('No se puede eliminar la unica version de la plantilla.');
+
+  const remainingVersions = versions.filter((version) => version.id !== versionId);
+  const currentVersionId = targetVersion.isCurrent
+    ? remainingVersions[remainingVersions.length - 1]?.id
+    : versions.find((version) => version.isCurrent)?.id;
+
+  await prisma.$transaction([
+    prisma.templateVersion.delete({ where: { id: versionId } }),
+    ...remainingVersions.map((version, index) => prisma.templateVersion.update({
+      where: { id: version.id },
+      data: { isCurrent: false, versionNumber: -(index + 1) },
+    })),
+    ...remainingVersions.map((version, index) => prisma.templateVersion.update({
+      where: { id: version.id },
+      data: { isCurrent: version.id === currentVersionId, versionNumber: index + 1 },
+    })),
   ]);
 
   const template = await prisma.template.findUniqueOrThrow({ where: { id }, include: templateInclude });
